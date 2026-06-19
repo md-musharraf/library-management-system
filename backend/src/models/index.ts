@@ -1,0 +1,12 @@
+// Central model exports — import everything from here
+export { Tenant } from './Tenant'
+export { User } from './User'
+export { Student } from './Student'
+export { Shift } from './Shift'
+export { Plan } from './Plan'
+export { Seat } from './Seat'
+export { Booking } from './Booking'
+export { Payment } from './Payment'
+export { WhatsappConfig } from './WhatsappConfig'
+export { MessageLog } from './MessageLog'
+export { Attendance } from './Attendance'

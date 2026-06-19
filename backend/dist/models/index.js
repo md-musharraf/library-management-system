@@ -1,0 +1,26 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Attendance = exports.MessageLog = exports.WhatsappConfig = exports.Payment = exports.Booking = exports.Seat = exports.Plan = exports.Shift = exports.Student = exports.User = exports.Tenant = void 0;
+// Central model exports — import everything from here
+var Tenant_1 = require("./Tenant");
+Object.defineProperty(exports, "Tenant", { enumerable: true, get: function () { return Tenant_1.Tenant; } });
+var User_1 = require("./User");
+Object.defineProperty(exports, "User", { enumerable: true, get: function () { return User_1.User; } });
+var Student_1 = require("./Student");
+Object.defineProperty(exports, "Student", { enumerable: true, get: function () { return Student_1.Student; } });
+var Shift_1 = require("./Shift");
+Object.defineProperty(exports, "Shift", { enumerable: true, get: function () { return Shift_1.Shift; } });
+var Plan_1 = require("./Plan");
+Object.defineProperty(exports, "Plan", { enumerable: true, get: function () { return Plan_1.Plan; } });
+var Seat_1 = require("./Seat");
+Object.defineProperty(exports, "Seat", { enumerable: true, get: function () { return Seat_1.Seat; } });
+var Booking_1 = require("./Booking");
+Object.defineProperty(exports, "Booking", { enumerable: true, get: function () { return Booking_1.Booking; } });
+var Payment_1 = require("./Payment");
+Object.defineProperty(exports, "Payment", { enumerable: true, get: function () { return Payment_1.Payment; } });
+var WhatsappConfig_1 = require("./WhatsappConfig");
+Object.defineProperty(exports, "WhatsappConfig", { enumerable: true, get: function () { return WhatsappConfig_1.WhatsappConfig; } });
+var MessageLog_1 = require("./MessageLog");
+Object.defineProperty(exports, "MessageLog", { enumerable: true, get: function () { return MessageLog_1.MessageLog; } });
+var Attendance_1 = require("./Attendance");
+Object.defineProperty(exports, "Attendance", { enumerable: true, get: function () { return Attendance_1.Attendance; } });

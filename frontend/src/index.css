@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-50: var(--primary-50);
+  --color-primary-100: var(--primary-100);
+  --color-primary-500: var(--primary-500);
+  --color-primary-600: var(--primary-600);
+  --color-primary-700: var(--primary-700);
+
+  --color-app-bg: var(--app-bg);
+  --color-app-surface: var(--app-surface);
+  --color-app-border: var(--app-border);
+
+  /* Override default tailwind colors to make them theme-responsive */
+  --color-slate-55: var(--app-text);
+  --color-slate-100: var(--app-text);
+  --color-slate-200: var(--app-text);
+  --color-slate-300: var(--app-text-muted);
+  --color-slate-400: var(--app-text-muted);
+  --color-slate-500: var(--app-text-muted);
+  
+  --color-slate-800: var(--app-slate-800);
+  --color-slate-900: var(--app-slate-900);
+  
+  /* Map violet colors used in App.tsx to our theme primary color */
+  --color-violet-50: var(--primary-50);
+  --color-violet-100: var(--primary-100);
+  --color-violet-200: var(--primary-200);
+  --color-violet-300: var(--primary-300);
+  --color-violet-400: var(--primary-400);
+  --color-violet-500: var(--primary-500);
+  --color-violet-600: var(--primary-600);
+  --color-violet-700: var(--primary-700);
+  --color-violet-800: var(--primary-800);
+  --color-violet-900: var(--primary-900);
+  --color-violet-950: var(--primary-955);
+}
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  
+  /* BRAND COLORS: Autumn Leaves Palette */
+  --primary-50: #fdf8f5;
+  --primary-100: #fbeee6;
+  --primary-200: #f7dcd0;
+  --primary-300: #f0b5a1;
+  --primary-400: #e4896a;
+  --primary-500: #C65D3B;  /* Burnt Orange */
+  --primary-600: #A65E2E;  /* Terracotta/Clay */
+  --primary-700: #7D4B2A;  /* Deep Warm Brown */
+  --primary-800: #61391e;
+  --primary-900: #502e17;
+  --primary-955: #321b0d;
+
+  /* LIGHT THEME (Autumn Warmth) */
+  --app-bg: #FAF6F0;       /* Lighter cream background */
+  --app-surface: #ffffff;
+  --app-border: #ebdcc5;   /* Cream/beige border */
+  --app-text: #4a2c16;     /* Deep warm brown text */
+  --app-text-muted: #8a735e; /* Warm brown-grey */
+  --app-slate-800: #f4ebd9; /* Soft cream hover */
+  --app-slate-900: #ebdcc5;
+
+  background-color: var(--app-bg);
+  color: var(--app-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+:root.dark {
+  /* DARK THEME (Autumn Forest Night) */
+  --app-bg: #150d0a;       /* Deep warm dark brown */
+  --app-surface: #1e130f;  /* Deep chocolate surface */
+  --app-border: #362118;   /* Warm dark brown border */
+  --app-text: #E6CBA8;     /* Soft warm cream text */
+  --app-text-muted: #a68d77; /* Warm muted brown */
+  --app-slate-800: #2c1b15;  /* Deep hover state */
+  --app-slate-900: #1c110c;
+}
+
+body {
+  margin: 0;
+  background-color: var(--app-bg);
+  color: var(--app-text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--app-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--app-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-500);
+}
+
+/* Form inputs & select styling */
+input, select, textarea {
+  color: var(--app-text) !important;
+  background-color: var(--app-bg) !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--app-text-muted) !important;
+  opacity: 0.6;
+}
+
+/* General text-white overrides in Light mode - turn white text dark */
+:root:not(.dark) .text-white {
+  color: var(--app-text) !important;
+}
+
+/* Restore white text color for elements sitting on solid colored backgrounds in light theme */
+:root:not(.dark) button.text-white:not(.bg-app-border),
+:root:not(.dark) button:not(.bg-app-border) .text-white,
+:root:not(.dark) a.text-white:not(.bg-app-border),
+:root:not(.dark) a:not(.bg-app-border) .text-white,
+:root:not(.dark) .bg-violet-600 .text-white,
+:root:not(.dark) .bg-violet-500 .text-white,
+:root:not(.dark) .bg-emerald-600 .text-white,
+:root:not(.dark) .bg-emerald-500 .text-white,
+:root:not(.dark) .bg-[#10b981] .text-white,
+:root:not(.dark) .bg-rose-600 .text-white,
+:root:not(.dark) .bg-rose-500 .text-white,
+:root:not(.dark) .bg-red-600 .text-white {
+  color: #ffffff !important;
+}
+
+/* Highlight / Status Colors Contrast Upgrades for Light Mode */
+:root:not(.dark) .text-violet-400 {
+  color: var(--primary-600) !important; /* Rich terracotta */
+}
+:root:not(.dark) .text-emerald-400 {
+  color: #059669 !important; /* emerald-600 */
+}
+:root:not(.dark) .text-rose-400,
+:root:not(.dark) .text-red-400 {
+  color: #dc2626 !important; /* red-600 */
+}
+
+/* Hover text visibility fixes in Light Mode */
+/* Overrides hover:text-white to hover:text-dark-brown, except when the background becomes dark/colored on hover */
+:root:not(.dark) .hover\:text-white:not([class*="hover:bg-violet"]):not([class*="hover:bg-emerald"]):not([class*="hover:bg-rose"]):not([class*="hover:bg-red"]):not([class*="hover:bg-green"]):not([class*="hover:bg-primary"]):hover {
+  color: var(--app-text) !important;
+}
+
+:root:not(.dark) .hover\:text-slate-200:hover {
+  color: var(--app-text) !important;
+}
+
+:root:not(.dark) .hover\:text-violet-300:hover {
+  color: var(--primary-700) !important; /* Deep Clay on hover */
+}
+
+:root:not(.dark) .hover\:text-red-300:hover,
+:root:not(.dark) .hover\:text-rose-300:hover {
+  color: #991b1b !important; /* red-800 on hover */
+}
+
+:root:not(.dark) .hover\:text-emerald-300:hover {
+  color: #065f46 !important; /* emerald-800 on hover */
+}
+
+/* Sidebar hover state overrides for light mode */
+:root:not(.dark) .hover\:bg-slate-800\/40:hover {
+  background-color: var(--app-slate-800) !important;
+}
+
+/* Table row hover state overrides for light mode */
+:root:not(.dark) .hover\:bg-app-surface\/20:hover {
+  background-color: var(--app-slate-800) !important;
+}
+
+/* Slate utility colors text visibility overrides in Light Mode */
+:root:not(.dark) .text-slate-100 {
+  color: var(--app-text) !important;
+}
+:root:not(.dark) .text-slate-200 {
+  color: var(--app-text) !important;
+}
+:root:not(.dark) .text-slate-300 {
+  color: var(--app-text-muted) !important;
+}
+:root:not(.dark) .text-slate-400 {
+  color: var(--app-text-muted) !important;
+}
+:root:not(.dark) .text-slate-500 {
+  color: var(--app-text-muted) !important;
+}
+

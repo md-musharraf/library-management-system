@@ -1,0 +1,140 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Tenant {
+  id             String          @id @default(uuid())
+  name           String
+  ownerName      String
+  phone          String
+  address        String
+  logoUrl        String?
+  lastRegNo      String?
+  createdAt      DateTime        @default(now())
+  users          User[]
+  students       Student[]
+  shifts         Shift[]
+  plans          Plan[]
+  seats          Seat[]
+  bookings       Booking[]
+  payments       Payment[]
+  whatsappConfig WhatsappConfig?
+  messageLogs    MessageLog[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  email     String   @unique
+  password  String
+  role      String   // "ADMIN", "STAFF"
+  createdAt DateTime @default(now())
+}
+
+model Student {
+  id             String    @id @default(uuid())
+  tenantId       String
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  name           String
+  phone          String
+  email          String?
+  registrationNo String    @unique
+  aadharNo       String?
+  status         String    // "ACTIVE", "INACTIVE"
+  createdAt      DateTime  @default(now())
+  bookings       Booking[]
+}
+
+model Shift {
+  id        String    @id @default(uuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  name      String    // e.g. "Shift A"
+  startTime String    // e.g. "06:00"
+  endTime   String    // e.g. "11:00"
+  plans     Plan[]
+  bookings  Booking[]
+  createdAt DateTime  @default(now())
+}
+
+model Plan {
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  name         String    // e.g., "Monthly Standard"
+  durationDays Int
+  price        Float
+  shiftId      String
+  shift        Shift     @relation(fields: [shiftId], references: [id])
+  bookings     Booking[]
+}
+
+model Seat {
+  id         String    @id @default(uuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  seatNumber String
+  status     String    // "AVAILABLE", "OCCUPIED", "MAINTENANCE"
+  areaName   String
+  bookings   Booking[]
+}
+
+model Booking {
+  id        String    @id @default(uuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  studentId String
+  student   Student   @relation(fields: [studentId], references: [id])
+  seatId    String
+  seat      Seat      @relation(fields: [seatId], references: [id])
+  planId    String
+  plan      Plan      @relation(fields: [planId], references: [id])
+  startDate DateTime
+  endDate   DateTime
+  shiftId   String
+  shift     Shift     @relation(fields: [shiftId], references: [id])
+  status    String    // "ACTIVE", "COMPLETED", "CANCELLED"
+  payments  Payment[]
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  amount      Float
+  paymentDate DateTime @default(now())
+  paymentMode String   // "CASH", "UPI", "CARD"
+  status      String   // "PAID", "DUE", "PARTIAL"
+}
+
+model WhatsappConfig {
+  id               String   @id @default(uuid())
+  tenantId         String   @unique
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  apiUrl           String
+  token            String
+  providerType     String
+  templateWelcome  String
+  templateExpiry   String
+  expiryDaysAlert  Int      @default(3)
+}
+
+model MessageLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  recipient  String
+  message    String
+  status     String
+  errorMsg   String?
+  sentAt     DateTime @default(now())
+}
