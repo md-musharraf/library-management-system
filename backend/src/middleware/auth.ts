@@ -34,9 +34,10 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       return res.status(401).json({ error: 'Session expired or logged out from another device.' })
     }
 
-    // Keep session alive
-    session.lastActive = new Date()
-    await session.save()
+    // Keep session alive in the background using updateOne to avoid Mongoose VersionError and database write bottlenecks
+    Session.updateOne({ _id: session._id }, { $set: { lastActive: new Date() } }).catch(err => {
+      console.error('Failed to update session lastActive:', err)
+    })
 
     next()
   } catch (error) {

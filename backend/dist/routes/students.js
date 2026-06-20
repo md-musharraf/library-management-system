@@ -102,11 +102,11 @@ router.post('/', async (req, res) => {
     try {
         let registrationNo;
         if (customRegNo && customRegNo.trim()) {
-            const existing = await models_1.Student.findOne({ registrationNo: customRegNo.trim(), tenantId });
+            const existing = await models_1.Student.findOne({ registrationNo: customRegNo.trim().toUpperCase(), tenantId });
             if (existing) {
-                return res.status(400).json({ error: `Registration number '${customRegNo.trim()}' is already in use` });
+                return res.status(400).json({ error: `Registration number '${customRegNo.trim().toUpperCase()}' is already in use` });
             }
-            registrationNo = customRegNo.trim();
+            registrationNo = customRegNo.trim().toUpperCase();
         }
         else {
             const tenant = await models_1.Tenant.findById(tenantId);

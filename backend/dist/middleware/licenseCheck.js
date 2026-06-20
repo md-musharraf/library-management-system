@@ -8,7 +8,8 @@ async function licenseCheck(req, res, next) {
         return res.status(400).json({ error: 'Tenant context is missing for license check' });
     }
     try {
-        const tenant = await models_1.Tenant.findById(tenantId);
+        // Reuse the tenant document attached by tenantMiddleware to avoid a second DB hit
+        const tenant = req.tenantDoc || await models_1.Tenant.findById(tenantId);
         if (!tenant) {
             return res.status(404).json({ error: 'Tenant not found' });
         }

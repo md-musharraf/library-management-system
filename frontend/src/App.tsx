@@ -402,6 +402,22 @@ export default function App() {
 
   const [isAdminView, setIsAdminView] = useState(() => window.location.search.includes('mode=admin') || window.location.hash.includes('mode=admin'))
 
+  // Sync URL query params with isAdminView state so refresh doesn't evict the view
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (isAdminView) {
+      if (url.searchParams.get('mode') !== 'admin') {
+        url.searchParams.set('mode', 'admin')
+        window.history.replaceState({}, '', url.pathname + url.search)
+      }
+    } else {
+      if (url.searchParams.get('mode') === 'admin') {
+        url.searchParams.delete('mode')
+        window.history.replaceState({}, '', url.pathname + url.search)
+      }
+    }
+  }, [isAdminView])
+
   // Fetch tenant profile and license status on login/load
   useEffect(() => {
     if (token && !isAdminView) {
@@ -1303,7 +1319,7 @@ function KioskGateView({
           {/* Real-time Clock View */}
           <div className="text-center mb-8 space-y-1">
             <div className="text-5xl md:text-7xl font-extrabold tracking-widest font-mono text-white bg-clip-text bg-gradient-to-r from-white via-slate-300 to-violet-400 drop-shadow-md">
-              {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
             </div>
             <div className="text-xs md:text-sm font-semibold uppercase tracking-wider text-violet-400 flex items-center justify-center gap-2">
               <Calendar className="w-4 h-4 text-violet-400" />
@@ -1470,7 +1486,7 @@ function KioskGateView({
                   )}
 
                   <div className="text-[10px] text-slate-400 mt-2">
-                    Time: {statusCard.timestamp.toLocaleTimeString()}
+                    Time: {statusCard.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
                   </div>
 
                   <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-3">
@@ -1921,8 +1937,8 @@ function AttendanceView({
     try {
       const headers = ['Date', 'Student Name', 'Registration No', 'Phone', 'Seat Number', 'Check-In Time', 'Check-Out Time', 'Duration (if checked-out)']
       const rows = historyLogs.map((log) => {
-        const checkInFormatted = new Date(log.checkIn).toLocaleString()
-        const checkOutFormatted = log.checkOut ? new Date(log.checkOut).toLocaleString() : 'Currently Inside'
+        const checkInFormatted = new Date(log.checkIn).toLocaleString([], { hour12: true })
+        const checkOutFormatted = log.checkOut ? new Date(log.checkOut).toLocaleString([], { hour12: true }) : 'Currently Inside'
         
         let duration = ''
         if (log.checkOut) {
@@ -2139,7 +2155,7 @@ function AttendanceView({
                 >
                   <option value="">All Shifts (Live Overall)</option>
                   {shifts.map(sh => (
-                    <option key={sh.id} value={sh.id}>{sh.name} ({sh.startTime} - {sh.endTime})</option>
+                    <option key={sh.id} value={sh.id}>{sh.name} ({formatTimeTo12h(sh.startTime)} - {formatTimeTo12h(sh.endTime)})</option>
                   ))}
                 </select>
               </div>
@@ -2245,7 +2261,7 @@ function AttendanceView({
                         <div className="flex justify-between text-slate-400">
                           <span>Checked In:</span>
                           <span className="font-bold text-white">
-                            {new Date(student.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(student.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                           </span>
                         </div>
                         <div className="flex justify-between text-slate-400">
@@ -2325,11 +2341,11 @@ function AttendanceView({
                             </span>
                           </td>
                           <td className="px-6 py-4 font-medium text-slate-300">
-                            {new Date(log.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            {new Date(log.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
                           </td>
                           <td className="px-6 py-4 font-medium text-slate-300">
                             {log.checkOut
-                              ? new Date(log.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                              ? new Date(log.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
                               : '—'}
                           </td>
                           <td className="px-6 py-4 font-bold text-slate-400">
@@ -2474,11 +2490,11 @@ function AttendanceView({
                               </span>
                             </td>
                             <td className="px-6 py-4 text-slate-300">
-                              {checkInTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {checkInTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                             </td>
                             <td className="px-6 py-4 text-slate-300">
                               {checkOutTime
-                                ? checkOutTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                ? checkOutTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
                                 : <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase rounded-md">Inside</span>}
                             </td>
                             <td className={`px-6 py-4 font-bold ${checkOutTime ? 'text-slate-400' : 'text-emerald-400'}`}>
@@ -5722,7 +5738,7 @@ function SettingsView({ showToast, setTenantName, setLogoUrl }: SettingsViewProp
                   <div key={log.id} className="bg-app-bg border border-app-border p-3 rounded-xl space-y-1.5 hover:border-violet-500/10 transition-all">
                     <div className="flex justify-between items-center text-[10px]">
                       <span className="font-mono text-violet-400 font-bold">{log.recipient}</span>
-                      <span className="text-slate-400 font-medium">{new Date(log.sentAt).toLocaleTimeString()}</span>
+                      <span className="text-slate-400 font-medium">{new Date(log.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
                     </div>
                     <p className="text-[10px] text-slate-300 leading-tight bg-app-surface/30 p-2 rounded-lg">{log.message}</p>
                     <div className="flex justify-end">

@@ -21,7 +21,7 @@ async function runTest() {
     const ownerName = 'Test Owner';
     const phone = '919999999999'; // 12 digit phone number for clean testing
     const address = '123 Test Street';
-    console.log('\n--- 1. Testing Registration under MANUAL_WHATSAPP (Default) ---');
+    console.log('\n--- 1. Testing Registration of Tenant ---');
     const regResponse = await fetch(`${BASE_URL}/auth/register-tenant`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -41,11 +41,29 @@ async function runTest() {
     const tenantId = regData.tenantId;
     const token = regData.token;
     console.log(`Tenant registered successfully. ID: ${tenantId}`);
-    console.log(`Welcome Message Response Payload: ${JSON.stringify(regData.welcomeMessage)}`);
-    if (!regData.welcomeMessage || regData.welcomeMessage.shouldSendManual !== true) {
+    console.log('\n--- 2. Registering Student under MANUAL_WHATSAPP (Default) ---');
+    const regStudentManualRes = await fetch(`${BASE_URL}/students`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'X-Tenant-ID': tenantId
+        },
+        body: JSON.stringify({
+            name: 'Rohan Sharma',
+            phone: '919876543211'
+        })
+    });
+    if (!regStudentManualRes.ok) {
+        throw new Error(`Failed to register student: ${await regStudentManualRes.text()}`);
+    }
+    const studentManualData = await regStudentManualRes.json();
+    console.log(`Registered Student: ${JSON.stringify(studentManualData)}`);
+    console.log(`Welcome Message Response Payload: ${JSON.stringify(studentManualData.welcomeMessage)}`);
+    if (!studentManualData.welcomeMessage || studentManualData.welcomeMessage.shouldSendManual !== true) {
         throw new Error('Expected shouldSendManual to be true for default configuration!');
     }
-    console.log('\n--- 2. Fetching Config to Verify Default Fields ---');
+    console.log('\n--- 3. Fetching Config to Verify Default Fields ---');
     const getConfigRes = await fetch(`${BASE_URL}/whatsapp/config`, {
         headers: {
             'Authorization': `Bearer ${token}`,
@@ -57,7 +75,7 @@ async function runTest() {
     if (configData.notificationChannel !== 'MANUAL_WHATSAPP' || configData.fast2smsApiKey !== '') {
         throw new Error('Config default values are incorrect!');
     }
-    console.log('\n--- 3. Updating Config to SMS Mode ---');
+    console.log('\n--- 4. Updating Config to SMS Mode ---');
     const updateConfigRes = await fetch(`${BASE_URL}/whatsapp/config`, {
         method: 'POST',
         headers: {
@@ -75,8 +93,8 @@ async function runTest() {
     if (updatedConfigData.notificationChannel !== 'SMS' || updatedConfigData.fast2smsApiKey !== 'mock-fast2sms-api-key-xyz') {
         throw new Error('Config failed to update to SMS!');
     }
-    console.log('\n--- 4. Registering a student under SMS mode (should run auto-dispatch background mock) ---');
-    const regStudentRes = await fetch(`${BASE_URL}/students`, {
+    console.log('\n--- 5. Registering a student under SMS mode (should run auto-dispatch background mock) ---');
+    const regStudentSMSRes = await fetch(`${BASE_URL}/students`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -88,13 +106,13 @@ async function runTest() {
             phone: '919876543210'
         })
     });
-    const studentData = await regStudentRes.json();
-    console.log(`Registered Student: ${JSON.stringify(studentData)}`);
-    // Under SMS mode, welcomeMessage.shouldSendManual should be null or false
-    if (studentData.welcomeMessage && studentData.welcomeMessage.shouldSendManual === true) {
+    const studentSMSData = await regStudentSMSRes.json();
+    console.log(`Registered Student: ${JSON.stringify(studentSMSData)}`);
+    // Under SMS mode, welcomeMessage should be null (since it was sent via API)
+    if (studentSMSData.welcomeMessage && studentSMSData.welcomeMessage.shouldSendManual === true) {
         throw new Error('Expected shouldSendManual to be false or null under SMS mode!');
     }
-    console.log('\n--- 5. Triggering manual custom message under SMS mode (should fail due to mock key) ---');
+    console.log('\n--- 6. Triggering manual custom message under SMS mode (should fail due to mock key) ---');
     const sendCustomRes = await fetch(`${BASE_URL}/whatsapp/send-custom`, {
         method: 'POST',
         headers: {
@@ -103,7 +121,7 @@ async function runTest() {
             'X-Tenant-ID': tenantId
         },
         body: JSON.stringify({
-            studentId: studentData.id,
+            studentId: studentSMSData.id,
             message: 'Hello Ramesh, this is a test notification.'
         })
     });
@@ -113,7 +131,7 @@ async function runTest() {
     if (sendCustomRes.status === 200) {
         throw new Error('Expected custom alert to fail with invalid mock API key!');
     }
-    console.log('\n--- 6. Reverting to MANUAL_WHATSAPP and testing manual alert trigger ---');
+    console.log('\n--- 7. Reverting to MANUAL_WHATSAPP and testing manual alert trigger ---');
     await fetch(`${BASE_URL}/whatsapp/config`, {
         method: 'POST',
         headers: {
@@ -133,7 +151,7 @@ async function runTest() {
             'X-Tenant-ID': tenantId
         },
         body: JSON.stringify({
-            studentId: studentData.id,
+            studentId: studentSMSData.id,
             message: 'Hello Ramesh, this is a manual WhatsApp test notification.'
         })
     });
@@ -143,7 +161,7 @@ async function runTest() {
     if (sendManualCustomRes.status !== 200 || manualCustomData.mode !== 'MANUAL') {
         throw new Error('Expected manual custom message to succeed (200) with mode MANUAL!');
     }
-    console.log('\n--- 7. Cleaning up test data from Database ---');
+    console.log('\n--- 8. Cleaning up test data from Database ---');
     const deleteSessions = await models_1.Session.deleteMany({ tenantId });
     console.log(`Deleted ${deleteSessions.deletedCount} sessions`);
     const deleteUser = await models_1.User.deleteMany({ tenantId });

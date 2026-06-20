@@ -8,7 +8,8 @@ const router = (0, express_1.Router)();
 router.get('/profile', async (req, res) => {
     const tenantId = req.tenantId;
     try {
-        const tenant = await models_1.Tenant.findById(tenantId);
+        // Reuse tenantDoc from tenantMiddleware if available; fallback to fresh fetch
+        const tenant = req.tenantDoc || await models_1.Tenant.findById(tenantId);
         if (!tenant) {
             return res.status(404).json({ error: 'Tenant not found' });
         }

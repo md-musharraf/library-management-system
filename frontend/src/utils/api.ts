@@ -13,11 +13,11 @@ async function request(path: string, options: RequestOptions = {}) {
     ...((options.headers as Record<string, string>) || {}),
   }
 
-  if (token) {
+  if (token && !headers['Authorization']) {
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  if (tenantId) {
+  if (tenantId && !headers['X-Tenant-ID']) {
     headers['X-Tenant-ID'] = tenantId
   }
 

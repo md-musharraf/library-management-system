@@ -43,8 +43,10 @@ const SessionSchema = new mongoose_1.Schema({
     token: { type: String, required: true, index: true },
     ip: { type: String },
     userAgent: { type: String },
-    lastActive: { type: Date, default: Date.now }
-}, { timestamps: { createdAt: 'createdAt', updatedAt: 'lastActive' } });
+    createdAt: { type: Date, default: Date.now },
+    lastActive: { type: Date, default: Date.now, index: true }
+}, { timestamps: false } // Managed manually: createdAt on create, lastActive updated by auth middleware
+);
 SessionSchema.set('toJSON', {
     transform: (_doc, ret) => {
         ret.id = ret._id;

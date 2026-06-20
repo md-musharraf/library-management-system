@@ -16,7 +16,7 @@ router.post('/check-in', async (req, res) => {
     }
     try {
         // 1. Find active student
-        const student = await models_1.Student.findOne({ registrationNo: registrationNo.trim(), tenantId });
+        const student = await models_1.Student.findOne({ registrationNo: registrationNo.trim().toUpperCase(), tenantId });
         if (!student) {
             return res.status(404).json({ error: 'Registration number not found' });
         }
@@ -71,7 +71,7 @@ router.post('/check-out', async (req, res) => {
     }
     try {
         // 1. Find student
-        const student = await models_1.Student.findOne({ registrationNo: registrationNo.trim(), tenantId });
+        const student = await models_1.Student.findOne({ registrationNo: registrationNo.trim().toUpperCase(), tenantId });
         if (!student) {
             return res.status(404).json({ error: 'Registration number not found' });
         }
@@ -116,8 +116,20 @@ router.get('/today', async (req, res) => {
         const logs = await models_1.Attendance.find({ tenantId, date: todayStr })
             .populate('student')
             .sort({ checkIn: -1 });
-        const formatted = await Promise.all(logs.map(async (l) => {
-            const activeBooking = await models_1.Booking.findOne({ tenantId, studentId: l.studentId, status: 'ACTIVE' }).populate('seat');
+        // Bulk fetch active bookings for all students in today's logs to avoid N+1
+        const studentIds = [...new Set(logs.map((l) => l.studentId).filter(Boolean))];
+        const activeBookings = studentIds.length > 0
+            ? await models_1.Booking.find({ tenantId, studentId: { $in: studentIds }, status: 'ACTIVE' }).populate('seat')
+            : [];
+        // Map by studentId (take first active booking per student)
+        const seatByStudentMap = {};
+        activeBookings.forEach((b) => {
+            if (b.studentId && !seatByStudentMap[b.studentId]) {
+                seatByStudentMap[b.studentId] = b;
+            }
+        });
+        const formatted = logs.map((l) => {
+            const activeBooking = seatByStudentMap[l.studentId] || null;
             return {
                 id: l._id,
                 studentId: l.studentId,
@@ -128,7 +140,7 @@ router.get('/today', async (req, res) => {
                 checkIn: l.checkIn,
                 checkOut: l.checkOut || null
             };
-        }));
+        });
         return res.json(formatted);
     }
     catch (error) {
@@ -151,8 +163,19 @@ router.get('/history', async (req, res) => {
         const logs = await models_1.Attendance.find(query)
             .populate('student')
             .sort({ checkIn: -1 });
-        let formatted = await Promise.all(logs.map(async (l) => {
-            const activeBooking = await models_1.Booking.findOne({ tenantId, studentId: l.studentId, status: 'ACTIVE' }).populate('seat');
+        // Bulk fetch active bookings for all students in logs to avoid N+1
+        const studentIds = [...new Set(logs.map((l) => l.studentId).filter(Boolean))];
+        const activeBookings = studentIds.length > 0
+            ? await models_1.Booking.find({ tenantId, studentId: { $in: studentIds }, status: 'ACTIVE' }).populate('seat')
+            : [];
+        const seatByStudentMap = {};
+        activeBookings.forEach((b) => {
+            if (b.studentId && !seatByStudentMap[b.studentId]) {
+                seatByStudentMap[b.studentId] = b;
+            }
+        });
+        let formatted = logs.map((l) => {
+            const activeBooking = seatByStudentMap[l.studentId] || null;
             return {
                 id: l._id,
                 studentId: l.studentId,
@@ -164,7 +187,7 @@ router.get('/history', async (req, res) => {
                 checkOut: l.checkOut || null,
                 date: l.date
             };
-        }));
+        });
         // Filter by student name/regNo if search is supplied
         if (search) {
             const s = String(search).toLowerCase();

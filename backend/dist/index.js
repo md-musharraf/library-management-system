@@ -27,7 +27,28 @@ const auth_2 = require("./middleware/auth");
 const rateLimiter_1 = require("./middleware/rateLimiter");
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5000;
-app.use((0, cors_1.default)());
+// CORS — allows local dev by default; set CORS_ORIGIN in env for production
+const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:4173'];
+app.use((0, cors_1.default)({
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, Postman, curl)
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        }
+        else {
+            callback(new Error(`CORS blocked: origin '${origin}' is not permitted`));
+        }
+    },
+    credentials: true
+}));
+// Basic security headers
+app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    next();
+});
 app.use(express_1.default.json());
 // Apply Rate Limiting Middleware
 app.use('/api/auth/login', (0, rateLimiter_1.rateLimiter)(60000, 10, 'Too many login attempts from this IP. Please try again after a minute.'));
