@@ -177,4 +177,187 @@ router.get('/history', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error fetching history logs' });
     }
 });
+/**
+ * GET /api/attendance/analytics
+ * Retrieve busiest check-in hours, daily trends, and low attendance students
+ */
+router.get('/analytics', async (req, res) => {
+    const tenantId = req.tenantId;
+    try {
+        // 1. Calculate Busiest Hours (Last 30 Days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        thirtyDaysAgo.setHours(0, 0, 0, 0);
+        const recentLogs = await models_1.Attendance.find({
+            tenantId,
+            checkIn: { $gte: thirtyDaysAgo }
+        }).select('checkIn');
+        const hourlyCounts = Array.from({ length: 24 }, (_, i) => {
+            const hourNum = i;
+            const label = hourNum === 0
+                ? '12 AM'
+                : hourNum < 12
+                    ? `${hourNum} AM`
+                    : hourNum === 12
+                        ? '12 PM'
+                        : `${hourNum - 12} PM`;
+            return { hour: hourNum, hourLabel: label, count: 0 };
+        });
+        recentLogs.forEach((log) => {
+            if (log.checkIn) {
+                const hour = new Date(log.checkIn).getHours();
+                if (hour >= 0 && hour < 24) {
+                    hourlyCounts[hour].count++;
+                }
+            }
+        });
+        // Filter to normal operating hours (e.g. 6 AM to 11 PM) or just return all 24
+        // We'll return all 24, but the frontend can choose how to render them.
+        // 2. Daily Trends (Last 14 Days)
+        const dailyTrends = [];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        for (let i = 13; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            const label = `${d.getDate()} ${months[d.getMonth()]}`;
+            dailyTrends.push({ date: dateStr, label, count: 0 });
+        }
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+        fourteenDaysAgo.setHours(0, 0, 0, 0);
+        const trendLogs = await models_1.Attendance.find({
+            tenantId,
+            checkIn: { $gte: fourteenDaysAgo }
+        }).select('date');
+        trendLogs.forEach((log) => {
+            const logDate = log.date; // YYYY-MM-DD
+            const trendDay = dailyTrends.find(t => t.date === logDate);
+            if (trendDay) {
+                trendDay.count++;
+            }
+        });
+        // 3. Low Attendance / Inactive Students
+        // Defined as active students with active seat bookings who have checked in fewer than 3 times (or <50% rate) in the last 7 days.
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        sevenDaysAgo.setHours(0, 0, 0, 0);
+        const activeBookings = await models_1.Booking.find({
+            tenantId,
+            status: 'ACTIVE',
+            endDate: { $gte: new Date() }
+        }).populate('student').populate('seat');
+        const activeStudentIds = activeBookings
+            .filter(b => b.student && b.student.status === 'ACTIVE')
+            .map(b => b.student._id);
+        const recentCheckIns = await models_1.Attendance.find({
+            tenantId,
+            studentId: { $in: activeStudentIds },
+            checkIn: { $gte: sevenDaysAgo }
+        }).select('studentId');
+        const studentAttendanceMap = {};
+        activeStudentIds.forEach(id => {
+            studentAttendanceMap[id] = 0;
+        });
+        recentCheckIns.forEach((log) => {
+            if (studentAttendanceMap[log.studentId] !== undefined) {
+                studentAttendanceMap[log.studentId]++;
+            }
+        });
+        const lowAttendanceList = [];
+        for (const booking of activeBookings) {
+            if (!booking.student || booking.student.status !== 'ACTIVE')
+                continue;
+            const studentId = booking.student._id;
+            const count = studentAttendanceMap[studentId] || 0;
+            // Calculate how many days the booking has actually been active in the last 7 days
+            const bookingStart = new Date(booking.startDate);
+            const msDiff = Date.now() - bookingStart.getTime();
+            const daysActive = Math.max(1, Math.min(7, Math.ceil(msDiff / (1000 * 60 * 60 * 24))));
+            const attendanceRate = daysActive > 0 ? Math.round((count / daysActive) * 100) : 0;
+            // Flag if checked in 0 times, or check-in rate is less than 50% (for bookings active at least 3 days)
+            const isLow = count === 0 || (daysActive >= 3 && attendanceRate < 50);
+            if (isLow) {
+                const lastLog = await models_1.Attendance.findOne({
+                    tenantId,
+                    studentId
+                }).sort({ checkIn: -1 }).select('checkIn');
+                lowAttendanceList.push({
+                    studentId,
+                    name: booking.student.name,
+                    registrationNo: booking.student.registrationNo,
+                    phone: booking.student.phone,
+                    seatNumber: booking.seat?.seatNumber || 'Unassigned',
+                    attendanceCount: count,
+                    daysActive,
+                    attendanceRate,
+                    lastActive: lastLog ? lastLog.checkIn : null
+                });
+            }
+        }
+        // Sort by lowest count first
+        lowAttendanceList.sort((a, b) => a.attendanceCount - b.attendanceCount);
+        return res.json({
+            hourlyCounts,
+            dailyTrends,
+            lowAttendanceList
+        });
+    }
+    catch (error) {
+        console.error('Attendance analytics error:', error);
+        return res.status(500).json({ error: 'Internal server error calculating analytics' });
+    }
+});
+/**
+ * GET /api/attendance/student-by-regno/:regNo
+ * Lookup student details dynamically by Registration Number for live kiosk greeting
+ */
+router.get('/student-by-regno/:regNo', async (req, res) => {
+    const tenantId = req.tenantId;
+    const { regNo } = req.params;
+    if (!regNo || !regNo.trim()) {
+        return res.status(400).json({ error: 'Registration number is required' });
+    }
+    try {
+        const student = await models_1.Student.findOne({ registrationNo: regNo.trim().toUpperCase(), tenantId });
+        if (!student) {
+            return res.status(404).json({ error: 'Student not found' });
+        }
+        // Find if the student has an active booking
+        const activeBooking = await models_1.Booking.findOne({ tenantId, studentId: student._id, status: 'ACTIVE' }).populate('seat');
+        return res.json({
+            id: student._id,
+            name: student.name,
+            registrationNo: student.registrationNo,
+            status: student.status,
+            assignedSeat: activeBooking?.seat?.seatNumber || 'Unassigned',
+            shiftName: activeBooking?.shift?.name || 'N/A'
+        });
+    }
+    catch (error) {
+        console.error('Lookup student by regNo error:', error);
+        return res.status(500).json({ error: 'Internal server error looking up student' });
+    }
+});
+/**
+ * GET /api/attendance/student-kiosk-dictionary
+ * Fetch lightweight dictionary of active students (Registration No -> Name) for local caching
+ */
+router.get('/student-kiosk-dictionary', async (req, res) => {
+    const tenantId = req.tenantId;
+    try {
+        const students = await models_1.Student.find({ tenantId, status: 'ACTIVE' })
+            .select('registrationNo name')
+            .lean();
+        const dictionary = students.map((s) => ({
+            registrationNo: s.registrationNo,
+            name: s.name
+        }));
+        return res.json(dictionary);
+    }
+    catch (error) {
+        console.error('Fetch student kiosk dictionary error:', error);
+        return res.status(500).json({ error: 'Internal server error fetching dictionary' });
+    }
+});
 exports.default = router;

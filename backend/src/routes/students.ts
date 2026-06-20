@@ -40,7 +40,7 @@ router.get('/', async (req: Request, res: Response) => {
     })
 
     // Bulk fetch payments for all active bookings
-    const activeBookingIds = activeBookings.map(b => b._id)
+    const activeBookingIds = activeBookings.map(b => b._id.toString())
     const payments = await Payment.find({ bookingId: { $in: activeBookingIds } })
 
     // Group payments by bookingId

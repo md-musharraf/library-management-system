@@ -44,7 +44,15 @@ const AttendanceSchema = new mongoose_1.Schema({
     checkOut: { type: Date },
     date: { type: String, required: true }, // Format: YYYY-MM-DD
 }, { timestamps: false });
+// Define virtual relation for populate
+AttendanceSchema.virtual('student', {
+    ref: 'Student',
+    localField: 'studentId',
+    foreignField: '_id',
+    justOne: true
+});
 AttendanceSchema.set('toJSON', {
+    virtuals: true,
     transform: (_doc, ret) => {
         ret.id = ret._id;
         return ret;

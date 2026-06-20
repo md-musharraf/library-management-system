@@ -28,8 +28,11 @@ import {
   ArrowLeft,
   Download,
   LogIn,
-  UserCheck
+  UserCheck,
+  DollarSign,
+  TrendingDown
 } from 'lucide-react'
+
 import {
   AreaChart,
   Area,
@@ -80,6 +83,8 @@ interface DashboardMetrics {
   occupancyRate: number
   totalRevenue: number
   pendingDues: number
+  totalExpenses?: number
+  netProfit?: number
 }
 
 interface ExpiringBooking {
@@ -272,7 +277,7 @@ export default function App() {
   const [address, setAddress] = useState('')
 
   // View state
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'students' | 'seats' | 'plans' | 'settings' | 'attendance'>('dashboard')
+  const [currentTab, setCurrentTab] = useState<'dashboard' | 'students' | 'seats' | 'plans' | 'settings' | 'attendance' | 'expenses'>('dashboard')
   const isKioskMode = window.location.search.includes('mode=kiosk') || window.location.hash.includes('mode=kiosk')
   
   // Global Alert/Toast State
@@ -592,6 +597,10 @@ export default function App() {
                   active={currentTab === 'attendance'} onClick={() => setCurrentTab('attendance')} 
                 />
                 <SidebarItem 
+                  icon={<DollarSign className="w-5 h-5" />} label="Expenses & Ledger" 
+                  active={currentTab === 'expenses'} onClick={() => setCurrentTab('expenses')} 
+                />
+                <SidebarItem 
                   icon={<CreditCard className="w-5 h-5" />} label="Plans & Shifts" 
                   active={currentTab === 'plans'} onClick={() => setCurrentTab('plans')} 
                 />
@@ -665,6 +674,7 @@ export default function App() {
               {currentTab === 'students' && <StudentsView showToast={showToast} />}
               {currentTab === 'seats' && <SeatsView showToast={showToast} />}
               {currentTab === 'attendance' && <AttendanceView showToast={showToast} setCurrentTab={setCurrentTab} />}
+              {currentTab === 'expenses' && <ExpensesView showToast={showToast} />}
               {currentTab === 'plans' && <PlansAndShiftsView showToast={showToast} />}
               {currentTab === 'settings' && <SettingsView showToast={showToast} setTenantName={setTenantName} setLogoUrl={setLogoUrl} />}
             </div>
@@ -687,6 +697,10 @@ export default function App() {
             <BottomNavItem 
               icon={<Clock className="w-5.5 h-5.5" />} label="Attendance" 
               active={currentTab === 'attendance'} onClick={() => setCurrentTab('attendance')} 
+            />
+            <BottomNavItem 
+              icon={<DollarSign className="w-5.5 h-5.5" />} label="Ledger" 
+              active={currentTab === 'expenses'} onClick={() => setCurrentTab('expenses')} 
             />
             <BottomNavItem 
               icon={<CreditCard className="w-5.5 h-5.5" />} label="Plans" 
@@ -2701,7 +2715,7 @@ function DashboardView({ showToast }: { showToast: (msg: string, type?: 'success
   return (
     <div className="space-y-6">
       {/* Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard 
           title="Active Students" 
           value={metrics?.totalStudents || 0} 
@@ -2717,16 +2731,23 @@ function DashboardView({ showToast }: { showToast: (msg: string, type?: 'success
           color="emerald"
         />
         <MetricCard 
-          title="Monthly Revenue" 
+          title="Total Revenue" 
           value={`₹${metrics?.totalRevenue || 0}`} 
           subtitle="Fees collected"
           icon={<CreditCard className="w-5 h-5" />} 
           color="indigo"
         />
         <MetricCard 
+          title="Net Profit" 
+          value={`₹${metrics?.netProfit || 0}`} 
+          subtitle="Revenue minus expenses"
+          icon={<DollarSign className="w-5 h-5" />} 
+          color={(metrics?.netProfit || 0) >= 0 ? "emerald" : "rose"}
+        />
+        <MetricCard 
           title="Dues Pending" 
           value={`₹${metrics?.pendingDues || 0}`} 
-          subtitle="Next 10 days expected"
+          subtitle="Expected collections"
           icon={<AlertTriangle className="w-5 h-5" />} 
           color="rose"
         />
@@ -2813,6 +2834,307 @@ function DashboardView({ showToast }: { showToast: (msg: string, type?: 'success
                   </div>
                 </div>
               ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ==========================================
+// VIEW 6: Expenses & Ledger View Component
+// ==========================================
+interface ExpenseEntry {
+  id: string
+  description: string
+  category: 'RENT' | 'ELECTRICITY' | 'INTERNET' | 'SALARY' | 'MAINTENANCE' | 'OTHER'
+  amount: number
+  date: string
+  createdAt: string
+}
+
+function ExpensesView({ showToast }: { showToast: (msg: string, type?: 'success' | 'error') => void }) {
+  const [expenses, setExpenses] = useState<ExpenseEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  
+  // Form states
+  const [description, setDescription] = useState('')
+  const [category, setCategory] = useState<'RENT' | 'ELECTRICITY' | 'INTERNET' | 'SALARY' | 'MAINTENANCE' | 'OTHER'>('OTHER')
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [filterCategory, setFilterCategory] = useState<string>('ALL')
+
+  // Total summary states
+  const [totalRevenue, setTotalRevenue] = useState(0)
+
+  const loadExpenses = async () => {
+    setLoading(true)
+    try {
+      const [expData, metricsData] = await Promise.all([
+        api.get('/expenses'),
+        api.get('/dashboard/metrics')
+      ])
+      setExpenses(expData)
+      setTotalRevenue(metricsData.totalRevenue || 0)
+    } catch (err: any) {
+      showToast(err.message || 'Error loading expenses data', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadExpenses()
+  }, [])
+
+  const handleAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!description || !amount) {
+      showToast('Please fill in all required fields', 'error')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await api.post('/expenses', {
+        description,
+        category,
+        amount: Number(amount),
+        date: new Date(date)
+      })
+      showToast('Expense logged successfully', 'success')
+      setDescription('')
+      setCategory('OTHER')
+      setAmount('')
+      setDate(new Date().toISOString().split('T')[0])
+      loadExpenses()
+    } catch (err: any) {
+      showToast(err.message || 'Failed to add expense', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this expense?')) return
+    try {
+      await api.delete(`/expenses/${id}`)
+      showToast('Expense deleted successfully', 'success')
+      loadExpenses()
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete expense', 'error')
+    }
+  }
+
+  const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0)
+  const netProfit = totalRevenue - totalExpenses
+
+  const filteredExpenses = filterCategory === 'ALL'
+    ? expenses
+    : expenses.filter(e => e.category === filterCategory)
+
+  const categoryLabels: Record<string, string> = {
+    RENT: 'Rent & Lease',
+    ELECTRICITY: 'Electricity Bill',
+    INTERNET: 'Wi-Fi / Internet',
+    SALARY: 'Staff Salaries',
+    MAINTENANCE: 'Maintenance & Repairs',
+    OTHER: 'Other Expenses'
+  }
+
+  const categoryColors: Record<string, string> = {
+    RENT: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
+    ELECTRICITY: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+    INTERNET: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+    SALARY: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+    MAINTENANCE: 'bg-rose-500/10 border-rose-500/20 text-rose-400',
+    OTHER: 'bg-slate-500/10 border-slate-500/20 text-slate-400'
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Top Ledger Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="backdrop-blur-md bg-app-surface/40 border border-app-border p-5 rounded-2xl flex items-center justify-between shadow-xl">
+          <div>
+            <span className="text-xs text-slate-400 block font-medium">Total Subscription Revenue</span>
+            <span className="text-2xl font-black text-white mt-1 block">₹{totalRevenue}</span>
+            <span className="text-[10px] text-slate-500">Collected from student memberships</span>
+          </div>
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl">
+            <CreditCard className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="backdrop-blur-md bg-app-surface/40 border border-app-border p-5 rounded-2xl flex items-center justify-between shadow-xl">
+          <div>
+            <span className="text-xs text-slate-400 block font-medium">Total Logged Expenses</span>
+            <span className="text-2xl font-black text-rose-400 mt-1 block font-mono">₹{totalExpenses}</span>
+            <span className="text-[10px] text-slate-500">Operational costs & bills</span>
+          </div>
+          <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl">
+            <TrendingDown className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="backdrop-blur-md bg-app-surface/40 border border-app-border p-5 rounded-2xl flex items-center justify-between shadow-xl">
+          <div>
+            <span className="text-xs text-slate-400 block font-medium">Net Profit / Loss</span>
+            <span className={`text-2xl font-black mt-1 block font-mono ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {netProfit >= 0 ? `₹${netProfit}` : `-₹${Math.abs(netProfit)}`}
+            </span>
+            <span className="text-[10px] text-slate-500">Profitability index</span>
+          </div>
+          <div className={`p-3 rounded-xl border ${netProfit >= 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
+            <DollarSign className="w-6 h-6" />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Log Expense Form */}
+        <div className="backdrop-blur-md bg-app-surface/40 border border-app-border p-6 rounded-2xl shadow-xl flex flex-col justify-start">
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Log New Expense</h3>
+            <p className="text-xs text-slate-400">Record daily expenditures for profitability calculation.</p>
+          </div>
+
+          <form onSubmit={handleAddExpense} className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Description</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. June Electricity Bill"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Amount (₹)</label>
+                <input
+                  type="number"
+                  required
+                  placeholder="Amount"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Category</label>
+                <select
+                  value={category}
+                  onChange={(e: any) => setCategory(e.target.value)}
+                  className="w-full bg-app-bg border border-app-border rounded-xl px-2 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                >
+                  {Object.entries(categoryLabels).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Expense Date</label>
+              <input
+                type="date"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full bg-violet-600 hover:bg-violet-700 disabled:bg-violet-850 active:scale-95 text-white font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-violet-500/30 shadow-lg shadow-violet-600/10"
+            >
+              {submitting ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>Add Expense Entry</span>
+            </button>
+          </form>
+        </div>
+
+        {/* Expenses List */}
+        <div className="lg:col-span-2 backdrop-blur-md bg-app-surface/40 border border-app-border rounded-2xl overflow-hidden shadow-xl flex flex-col">
+          <div className="p-5 border-b border-app-border/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/10">
+            <div>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Ledger Accounts</h3>
+              <p className="text-xs text-slate-400">Statement of all operational expense entries.</p>
+            </div>
+
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="bg-app-bg border border-app-border rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none w-full sm:w-auto"
+            >
+              <option value="ALL">All Categories</option>
+              {Object.entries(categoryLabels).map(([val, label]) => (
+                <option key={val} value={val}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex-1 overflow-y-auto max-h-[350px]">
+            {loading ? (
+              <div className="p-12 flex justify-center"><RefreshCw className="w-6 h-6 text-violet-500 animate-spin" /></div>
+            ) : filteredExpenses.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                <TrendingDown className="w-8 h-8 opacity-30" />
+                <span>No expense entries recorded.</span>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-app-border bg-app-surface/30 text-slate-400 font-medium">
+                    <th className="px-5 py-3">Expense Details</th>
+                    <th className="px-5 py-3">Category</th>
+                    <th className="px-5 py-3">Date</th>
+                    <th className="px-5 py-3 text-right">Amount</th>
+                    <th className="px-5 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-app-border/30">
+                  {filteredExpenses.map((exp) => (
+                    <tr key={exp.id} className="hover:bg-app-surface/10 transition-colors">
+                      <td className="px-5 py-3.5">
+                        <div className="font-bold text-white text-sm">{exp.description}</div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border ${categoryColors[exp.category] || categoryColors.OTHER}`}>
+                          {categoryLabels[exp.category] || exp.category}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-300 font-medium">
+                        {new Date(exp.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td className="px-5 py-3.5 text-right font-black text-rose-400 text-sm">
+                        ₹{exp.amount}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <button
+                          onClick={() => handleDeleteExpense(exp.id)}
+                          className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                          title="Delete Entry"
+                        >
+                          <Trash className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
@@ -5384,7 +5706,7 @@ interface TenantClient {
   logoUrl?: string
   licenseKey?: string
   licenseExpiry: string
-  licenseType: 'TRIAL' | '1YEAR' | '2YEAR'
+  licenseType: 'TRIAL' | '1YEAR' | '2YEAR' | 'REVOKED'
   trialStartedAt: string
   studentCount: number
   daysLeft: number
@@ -5447,6 +5769,24 @@ function AdminDashboardView({ adminToken, setAdminToken, showToast, theme, setTh
       showToast(err.message || 'Failed to generate license key', 'error')
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const handleRevokeLicense = async (tenantId: string, tenantName: string) => {
+    if (!window.confirm(`Are you sure you want to REVOKE the license and LOCK the workspace for "${tenantName}"?`)) {
+      return
+    }
+    try {
+      const res = await api.post('/admin/revoke-license', 
+        { tenantId },
+        { headers: { Authorization: `Bearer ${adminToken}` } }
+      )
+      if (res.success) {
+        showToast('License revoked and workspace locked!', 'success')
+        fetchTenants()
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to revoke license', 'error')
     }
   }
 
@@ -5611,6 +5951,15 @@ function AdminDashboardView({ adminToken, setAdminToken, showToast, theme, setTh
                         >
                           <Shield className="w-3.5 h-3.5" />
                           License
+                        </button>
+                        <button
+                          onClick={() => handleRevokeLicense(tenant.id, tenant.name)}
+                          disabled={tenant.licenseType === 'REVOKED' || tenant.isExpired}
+                          className="px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-all font-semibold inline-flex items-center gap-1 border border-red-500/20 cursor-pointer"
+                          title="Revoke License & Lock Workspace"
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          Lock
                         </button>
                       </td>
                     </tr>

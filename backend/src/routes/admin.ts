@@ -165,4 +165,35 @@ router.post('/generate-license', adminAuth, async (req: Request, res: Response) 
   }
 })
 
+// Revoke/Delete License (Locks workspace instantly)
+router.post('/revoke-license', adminAuth, async (req: Request, res: Response) => {
+  const { tenantId } = req.body
+
+  if (!tenantId) {
+    return res.status(400).json({ error: 'Tenant ID is required' })
+  }
+
+  try {
+    const tenant = await Tenant.findById(tenantId)
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' })
+    }
+
+    const t = tenant as any
+    // Set expiry to past date (Jan 1, 1970) to instantly lock the workspace
+    t.licenseExpiry = new Date(0) 
+    t.licenseKey = null
+    t.licenseType = 'REVOKED'
+    await tenant.save()
+
+    return res.json({
+      success: true,
+      message: 'License revoked successfully. Tenant workspace locked.'
+    })
+  } catch (error) {
+    console.error('Error revoking license:', error)
+    return res.status(500).json({ error: 'Internal server error revoking license' })
+  }
+})
+
 export default router

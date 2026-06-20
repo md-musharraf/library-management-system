@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Attendance = exports.MessageLog = exports.WhatsappConfig = exports.Payment = exports.Booking = exports.Seat = exports.Plan = exports.Shift = exports.Student = exports.User = exports.Tenant = void 0;
+exports.Session = exports.Expense = exports.Attendance = exports.MessageLog = exports.WhatsappConfig = exports.Payment = exports.Booking = exports.Seat = exports.Plan = exports.Shift = exports.Student = exports.User = exports.Tenant = void 0;
 // Central model exports — import everything from here
 var Tenant_1 = require("./Tenant");
 Object.defineProperty(exports, "Tenant", { enumerable: true, get: function () { return Tenant_1.Tenant; } });
@@ -24,3 +24,7 @@ var MessageLog_1 = require("./MessageLog");
 Object.defineProperty(exports, "MessageLog", { enumerable: true, get: function () { return MessageLog_1.MessageLog; } });
 var Attendance_1 = require("./Attendance");
 Object.defineProperty(exports, "Attendance", { enumerable: true, get: function () { return Attendance_1.Attendance; } });
+var Expense_1 = require("./Expense");
+Object.defineProperty(exports, "Expense", { enumerable: true, get: function () { return Expense_1.Expense; } });
+var Session_1 = require("./Session");
+Object.defineProperty(exports, "Session", { enumerable: true, get: function () { return Session_1.Session; } });

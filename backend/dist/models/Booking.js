@@ -47,7 +47,33 @@ const BookingSchema = new mongoose_1.Schema({
     shiftId: { type: String, required: true },
     status: { type: String, required: true, enum: ['ACTIVE', 'COMPLETED', 'CANCELLED'], default: 'ACTIVE' },
 }, { timestamps: { createdAt: 'createdAt', updatedAt: false } });
+// Define virtual relations for populate
+BookingSchema.virtual('student', {
+    ref: 'Student',
+    localField: 'studentId',
+    foreignField: '_id',
+    justOne: true
+});
+BookingSchema.virtual('seat', {
+    ref: 'Seat',
+    localField: 'seatId',
+    foreignField: '_id',
+    justOne: true
+});
+BookingSchema.virtual('plan', {
+    ref: 'Plan',
+    localField: 'planId',
+    foreignField: '_id',
+    justOne: true
+});
+BookingSchema.virtual('shift', {
+    ref: 'Shift',
+    localField: 'shiftId',
+    foreignField: '_id',
+    justOne: true
+});
 BookingSchema.set('toJSON', {
+    virtuals: true,
     transform: (_doc, ret) => {
         ret.id = ret._id;
         return ret;

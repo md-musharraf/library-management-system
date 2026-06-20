@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { v4 as uuidv4 } from 'uuid'
-import { Tenant, User, WhatsappConfig, Seat, Shift, Plan } from '../models'
+import { Tenant, User, WhatsappConfig, Seat, Shift, Plan, Session } from '../models'
 
 const router = Router()
 const JWT_SECRET = process.env.JWT_SECRET || 'lms-super-secret-jwt-key'
@@ -106,6 +106,16 @@ router.post('/register-tenant', async (req: Request, res: Response) => {
       { expiresIn: '7d' }
     )
 
+    // Register active device session
+    await Session.create({
+      _id: uuidv4(),
+      tenantId: tenant._id,
+      userId: user._id,
+      token,
+      ip: (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown').split(',')[0].trim(),
+      userAgent: req.headers['user-agent'] || 'unknown'
+    })
+
     return res.status(201).json({
       message: 'Tenant and Admin User registered successfully',
       token,
@@ -150,6 +160,26 @@ router.post('/login', async (req: Request, res: Response) => {
       JWT_SECRET,
       { expiresIn: '7d' }
     )
+
+    // Enforce concurrent session limit (max 3 active concurrent sessions per library)
+    const activeThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const activeSessions = await Session.find({ tenantId: user.tenantId, lastActive: { $gte: activeThreshold } }).sort({ lastActive: 1 })
+    
+    if (activeSessions.length >= 3) {
+      // Rolling session lock: kick out the oldest active session
+      const oldestSession = activeSessions[0]
+      await Session.findByIdAndDelete(oldestSession._id)
+    }
+
+    // Save new device session
+    await Session.create({
+      _id: uuidv4(),
+      tenantId: user.tenantId,
+      userId: user._id,
+      token,
+      ip: (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown').split(',')[0].trim(),
+      userAgent: req.headers['user-agent'] || 'unknown'
+    })
 
     return res.json({
       message: 'Login successful',

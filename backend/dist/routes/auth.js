@@ -94,6 +94,15 @@ router.post('/register-tenant', async (req, res) => {
             { _id: (0, uuid_1.v4)(), tenantId: tenant._id, name: 'Monthly Shift C (4-9)', durationDays: 30, price: 800, shiftId: shiftC._id },
         ]);
         const token = jsonwebtoken_1.default.sign({ userId: user._id, tenantId: tenant._id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+        // Register active device session
+        await models_1.Session.create({
+            _id: (0, uuid_1.v4)(),
+            tenantId: tenant._id,
+            userId: user._id,
+            token,
+            ip: (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim(),
+            userAgent: req.headers['user-agent'] || 'unknown'
+        });
         return res.status(201).json({
             message: 'Tenant and Admin User registered successfully',
             token,
@@ -128,6 +137,23 @@ router.post('/login', async (req, res) => {
         }
         const tenant = await models_1.Tenant.findById(user.tenantId);
         const token = jsonwebtoken_1.default.sign({ userId: user._id, tenantId: user.tenantId, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+        // Enforce concurrent session limit (max 3 active concurrent sessions per library)
+        const activeThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const activeSessions = await models_1.Session.find({ tenantId: user.tenantId, lastActive: { $gte: activeThreshold } }).sort({ lastActive: 1 });
+        if (activeSessions.length >= 3) {
+            // Rolling session lock: kick out the oldest active session
+            const oldestSession = activeSessions[0];
+            await models_1.Session.findByIdAndDelete(oldestSession._id);
+        }
+        // Save new device session
+        await models_1.Session.create({
+            _id: (0, uuid_1.v4)(),
+            tenantId: user.tenantId,
+            userId: user._id,
+            token,
+            ip: (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim(),
+            userAgent: req.headers['user-agent'] || 'unknown'
+        });
         return res.json({
             message: 'Login successful',
             token,

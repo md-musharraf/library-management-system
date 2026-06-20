@@ -15,14 +15,23 @@ import tenantRoutes from './routes/tenant'
 import licenseRoutes from './routes/license'
 import adminRoutes from './routes/admin'
 import attendanceRoutes from './routes/attendance'
+import expenseRoutes from './routes/expenses'
 import { tenantMiddleware } from './middleware/tenant'
 import { licenseCheck } from './middleware/licenseCheck'
+import { authMiddleware } from './middleware/auth'
+
+import { rateLimiter } from './middleware/rateLimiter'
 
 const app = express()
 const PORT = process.env.PORT || 5000
 
 app.use(cors())
 app.use(express.json())
+
+// Apply Rate Limiting Middleware
+app.use('/api/auth/login', rateLimiter(60000, 10, 'Too many login attempts from this IP. Please try again after a minute.'))
+app.use('/api/auth/register-tenant', rateLimiter(60000, 5, 'Too many registration requests from this IP. Please try again after a minute.'))
+app.use(rateLimiter(60000, 150))
 
 // Request Logging Middleware
 app.use((req, res, next) => {
@@ -40,17 +49,18 @@ app.use('/api/auth', authRoutes)
 app.use('/api/admin', adminRoutes)
 
 // License check/activate routes (scoped to tenant, but exempt from license expiry check)
-app.use('/api/license', tenantMiddleware, licenseRoutes)
+app.use('/api/license', tenantMiddleware, authMiddleware, licenseRoutes)
 
-// Tenant Scoping + License Enforcement Middleware (Scopes all routes below to a tenant and blocks if expired)
-app.use('/api/dashboard', tenantMiddleware, licenseCheck, dashboardRoutes)
-app.use('/api/students', tenantMiddleware, licenseCheck, studentRoutes)
-app.use('/api/seats', tenantMiddleware, licenseCheck, seatRoutes)
-app.use('/api/plans', tenantMiddleware, licenseCheck, planRoutes)
-app.use('/api/shifts', tenantMiddleware, licenseCheck, shiftRoutes)
-app.use('/api/whatsapp', tenantMiddleware, licenseCheck, whatsappRoutes)
-app.use('/api/tenant', tenantMiddleware, licenseCheck, tenantRoutes)
-app.use('/api/attendance', tenantMiddleware, licenseCheck, attendanceRoutes)
+// Tenant Scoping + License Enforcement Middleware + JWT Auth
+app.use('/api/dashboard', tenantMiddleware, authMiddleware, licenseCheck, dashboardRoutes)
+app.use('/api/students', tenantMiddleware, authMiddleware, licenseCheck, studentRoutes)
+app.use('/api/seats', tenantMiddleware, authMiddleware, licenseCheck, seatRoutes)
+app.use('/api/plans', tenantMiddleware, authMiddleware, licenseCheck, planRoutes)
+app.use('/api/shifts', tenantMiddleware, authMiddleware, licenseCheck, shiftRoutes)
+app.use('/api/whatsapp', tenantMiddleware, authMiddleware, licenseCheck, whatsappRoutes)
+app.use('/api/tenant', tenantMiddleware, authMiddleware, licenseCheck, tenantRoutes)
+app.use('/api/attendance', tenantMiddleware, authMiddleware, licenseCheck, attendanceRoutes)
+app.use('/api/expenses', tenantMiddleware, authMiddleware, licenseCheck, expenseRoutes)
 
 // Connect to MongoDB Atlas then start server
 connectDB().then(() => {

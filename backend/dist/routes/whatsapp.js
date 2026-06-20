@@ -123,4 +123,42 @@ router.post('/send-manual', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error triggering WhatsApp message' });
     }
 });
+// Send custom manual alert to any student
+router.post('/send-custom', async (req, res) => {
+    const tenantId = req.tenantId;
+    const { studentId, message } = req.body;
+    if (!studentId || !message) {
+        return res.status(400).json({ error: 'studentId and message are required' });
+    }
+    try {
+        const student = await models_1.Student.findOne({ _id: studentId, tenantId });
+        if (!student) {
+            return res.status(404).json({ error: 'Student not found' });
+        }
+        const config = await models_1.WhatsappConfig.findOne({ tenantId });
+        if (!config || !config.apiUrl || !config.token) {
+            return res.status(400).json({ error: 'WhatsApp API credentials are not configured. Please go to settings.' });
+        }
+        console.log(`\n=== SIMULATED WHATSAPP CUSTOM SEND ===`);
+        console.log(`To: ${student.phone} (${student.name})`);
+        console.log(`API URL: ${config.apiUrl}`);
+        console.log(`Message Body: "${message}"`);
+        console.log(`======================================\n`);
+        const log = await models_1.MessageLog.create({
+            _id: (0, uuid_1.v4)(),
+            tenantId,
+            recipient: student.phone,
+            message,
+            status: 'SENT',
+        });
+        return res.json({
+            message: 'WhatsApp message sent successfully (simulated)',
+            log: log.toJSON(),
+        });
+    }
+    catch (error) {
+        console.error('Custom whatsapp send error:', error);
+        return res.status(500).json({ error: 'Internal server error triggering WhatsApp message' });
+    }
+});
 exports.default = router;

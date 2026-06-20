@@ -12,7 +12,7 @@ const TenantSchema = new Schema(
     lastRegNo: { type: String },
     licenseKey: { type: String },
     licenseExpiry: { type: Date },
-    licenseType: { type: String, enum: ['TRIAL', '1YEAR', '2YEAR'], default: 'TRIAL' },
+    licenseType: { type: String, enum: ['TRIAL', '1YEAR', '2YEAR', 'REVOKED'], default: 'TRIAL' },
     trialStartedAt: { type: Date, default: Date.now },
   },
   { timestamps: { createdAt: 'createdAt', updatedAt: false } }

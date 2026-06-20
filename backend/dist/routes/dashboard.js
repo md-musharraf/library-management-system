@@ -15,6 +15,9 @@ router.get('/metrics', async (req, res) => {
         const totalRevenue = paidPayments.reduce((acc, p) => acc + p.amount, 0);
         const duePayments = await models_1.Payment.find({ tenantId, status: 'DUE' }).select('amount');
         const pendingDues = duePayments.reduce((acc, p) => acc + p.amount, 0);
+        const expenses = await models_1.Expense.find({ tenantId }).select('amount');
+        const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+        const netProfit = totalRevenue - totalExpenses;
         return res.json({
             totalStudents,
             totalSeats,
@@ -22,6 +25,8 @@ router.get('/metrics', async (req, res) => {
             occupancyRate,
             totalRevenue,
             pendingDues,
+            totalExpenses,
+            netProfit,
         });
     }
     catch (error) {
@@ -49,10 +54,24 @@ router.get('/expiring-bookings', async (req, res) => {
             .populate('seat')
             .populate('plan')
             .populate('shift');
-        const formatted = await Promise.all(expiringBookings.map(async (b) => {
-            const payments = await models_1.Payment.find({ bookingId: b._id });
-            const paid = payments.filter((p) => p.status === 'PAID').reduce((sum, p) => sum + p.amount, 0);
-            const due = Math.max(0, b.plan?.price - paid);
+        // Bulk fetch all payments for these expiring bookings to avoid N+1 query
+        const expiringBookingIds = expiringBookings.map(b => b._id.toString());
+        const payments = await models_1.Payment.find({ bookingId: { $in: expiringBookingIds } });
+        // Group payments by bookingId
+        const paymentsByBookingMap = {};
+        payments.forEach((p) => {
+            if (p.bookingId) {
+                const bId = p.bookingId.toString();
+                if (!paymentsByBookingMap[bId]) {
+                    paymentsByBookingMap[bId] = [];
+                }
+                paymentsByBookingMap[bId].push(p);
+            }
+        });
+        const formatted = expiringBookings.map((b) => {
+            const bookingPayments = paymentsByBookingMap[b._id.toString()] || [];
+            const paid = bookingPayments.filter((p) => p.status === 'PAID').reduce((sum, p) => sum + p.amount, 0);
+            const due = Math.max(0, (b.plan?.price || 0) - paid);
             return {
                 bookingId: b._id,
                 studentName: b.student?.name,
@@ -65,7 +84,7 @@ router.get('/expiring-bookings', async (req, res) => {
                 endDate: b.endDate,
                 dueAmount: due,
             };
-        }));
+        });
         return res.json(formatted);
     }
     catch (error) {

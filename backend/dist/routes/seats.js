@@ -10,11 +10,24 @@ router.get('/', async (req, res) => {
     const tenantId = req.tenantId;
     try {
         const seats = await models_1.Seat.find({ tenantId }).sort({ seatNumber: 1 });
-        const formatted = await Promise.all(seats.map(async (s) => {
-            const bookings = await models_1.Booking.find({ tenantId, seatId: s._id, status: 'ACTIVE' })
-                .populate('student')
-                .populate('plan')
-                .populate('shift');
+        // Bulk fetch all active bookings populated with student/plan/shift to avoid N+1 query
+        const allActiveBookings = await models_1.Booking.find({ tenantId, status: 'ACTIVE' })
+            .populate('student')
+            .populate('plan')
+            .populate('shift');
+        // Group bookings by seatId
+        const bookingsBySeatMap = {};
+        allActiveBookings.forEach((b) => {
+            if (b.seatId) {
+                const sId = b.seatId.toString();
+                if (!bookingsBySeatMap[sId]) {
+                    bookingsBySeatMap[sId] = [];
+                }
+                bookingsBySeatMap[sId].push(b);
+            }
+        });
+        const formatted = seats.map((s) => {
+            const bookings = bookingsBySeatMap[s._id.toString()] || [];
             const activeBookings = bookings.map((b) => ({
                 id: b._id,
                 studentId: b.studentId,
@@ -36,7 +49,7 @@ router.get('/', async (req, res) => {
                 status: s.status,
                 bookings: activeBookings,
             };
-        }));
+        });
         return res.json(formatted);
     }
     catch (error) {

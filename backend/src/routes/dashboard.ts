@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { Student, Seat, Payment, Booking, WhatsappConfig } from '../models'
+import { Student, Seat, Payment, Booking, WhatsappConfig, Expense } from '../models'
 
 const router = Router()
 
@@ -19,6 +19,10 @@ router.get('/metrics', async (req: Request, res: Response) => {
     const duePayments = await Payment.find({ tenantId, status: 'DUE' }).select('amount')
     const pendingDues = duePayments.reduce((acc, p) => acc + p.amount, 0)
 
+    const expenses = await Expense.find({ tenantId }).select('amount')
+    const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0)
+    const netProfit = totalRevenue - totalExpenses
+
     return res.json({
       totalStudents,
       totalSeats,
@@ -26,6 +30,8 @@ router.get('/metrics', async (req: Request, res: Response) => {
       occupancyRate,
       totalRevenue,
       pendingDues,
+      totalExpenses,
+      netProfit,
     })
   } catch (error) {
     console.error('Dashboard metrics error:', error)
@@ -58,7 +64,7 @@ router.get('/expiring-bookings', async (req: Request, res: Response) => {
       .populate('shift')
 
     // Bulk fetch all payments for these expiring bookings to avoid N+1 query
-    const expiringBookingIds = expiringBookings.map(b => b._id)
+    const expiringBookingIds = expiringBookings.map(b => b._id.toString())
     const payments = await Payment.find({ bookingId: { $in: expiringBookingIds } })
 
     // Group payments by bookingId

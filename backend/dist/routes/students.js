@@ -21,20 +21,40 @@ router.get('/', async (req, res) => {
             ];
         }
         const students = await models_1.Student.find(query).sort({ createdAt: -1 });
-        // Get active bookings for each student
-        const formatted = await Promise.all(students.map(async (s) => {
-            const activeBookings = await models_1.Booking.find({ tenantId, studentId: s._id, status: 'ACTIVE' })
-                .populate('seat')
-                .populate('plan')
-                .populate('shift')
-                .sort({ startDate: -1 });
-            const activeBooking = activeBookings[0] || null;
+        // Bulk fetch all active bookings for this tenant to avoid N+1 query
+        const activeBookings = await models_1.Booking.find({ tenantId, status: 'ACTIVE' })
+            .populate('seat')
+            .populate('plan')
+            .populate('shift');
+        // Map active bookings by studentId
+        const bookingByStudentMap = {};
+        activeBookings.forEach((b) => {
+            if (b.studentId) {
+                bookingByStudentMap[b.studentId.toString()] = b;
+            }
+        });
+        // Bulk fetch payments for all active bookings
+        const activeBookingIds = activeBookings.map(b => b._id.toString());
+        const payments = await models_1.Payment.find({ bookingId: { $in: activeBookingIds } });
+        // Group payments by bookingId
+        const paymentsByBookingMap = {};
+        payments.forEach((p) => {
+            if (p.bookingId) {
+                const bId = p.bookingId.toString();
+                if (!paymentsByBookingMap[bId]) {
+                    paymentsByBookingMap[bId] = [];
+                }
+                paymentsByBookingMap[bId].push(p);
+            }
+        });
+        const formatted = students.map((s) => {
+            const activeBooking = bookingByStudentMap[s._id.toString()] || null;
             let hasDues = false;
             let dueAmount = 0;
             if (activeBooking) {
-                const payments = await models_1.Payment.find({ bookingId: activeBooking._id });
-                hasDues = payments.some(p => p.status === 'DUE');
-                dueAmount = payments.filter(p => p.status === 'DUE').reduce((sum, p) => sum + p.amount, 0);
+                const bookingPayments = paymentsByBookingMap[activeBooking._id.toString()] || [];
+                hasDues = bookingPayments.some(p => p.status === 'DUE');
+                dueAmount = bookingPayments.filter(p => p.status === 'DUE').reduce((sum, p) => sum + p.amount, 0);
             }
             else {
                 // If no active booking, consider it as pending/inactive (needs new booking)
@@ -60,7 +80,7 @@ router.get('/', async (req, res) => {
                 hasDues,
                 dueAmount,
             };
-        }));
+        });
         return res.json(formatted);
     }
     catch (error) {

@@ -42,6 +42,11 @@ async function request(path: string, options: RequestOptions = {}) {
       window.location.reload()
     }
 
+    // Instantly lock workspace if license is revoked or expired
+    if (response.status === 403 && errorData.error === 'LICENSE_EXPIRED') {
+      window.location.reload()
+    }
+
     throw new Error(errorMsg)
   }
 

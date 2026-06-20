@@ -33,21 +33,22 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Plan = void 0;
+exports.Session = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 const uuid_1 = require("uuid");
-const PlanSchema = new mongoose_1.Schema({
+const SessionSchema = new mongoose_1.Schema({
     _id: { type: String, default: uuid_1.v4 },
     tenantId: { type: String, required: true },
-    name: { type: String, required: true },
-    durationDays: { type: Number, required: true },
-    price: { type: Number, required: true },
-    shiftId: { type: String, required: true, ref: 'Shift' },
-}, { timestamps: { createdAt: 'createdAt', updatedAt: false } });
-PlanSchema.set('toJSON', {
+    userId: { type: String, required: true },
+    token: { type: String, required: true, index: true },
+    ip: { type: String },
+    userAgent: { type: String },
+    lastActive: { type: Date, default: Date.now }
+}, { timestamps: { createdAt: 'createdAt', updatedAt: 'lastActive' } });
+SessionSchema.set('toJSON', {
     transform: (_doc, ret) => {
         ret.id = ret._id;
         return ret;
     },
 });
-exports.Plan = mongoose_1.default.model('Plan', PlanSchema);
+exports.Session = mongoose_1.default.model('Session', SessionSchema);
