@@ -55,16 +55,6 @@ router.post('/register-tenant', async (req, res) => {
             templateExpiry: 'Dear {student_name}, your seat {seat_number} subscription ({shift} shift) at {library_name} expires on {expiry_date}. Please renew.',
             expiryDaysAlert: 3,
         });
-        // 4. Create default 10 seats
-        for (let i = 1; i <= 10; i++) {
-            await models_1.Seat.create({
-                _id: (0, uuid_1.v4)(),
-                tenantId: tenant._id,
-                seatNumber: `Seat-${i}`,
-                status: 'AVAILABLE',
-                areaName: 'General Hall',
-            });
-        }
         // 5. Create 3 default shifts
         const shiftA = await models_1.Shift.create({
             _id: (0, uuid_1.v4)(),

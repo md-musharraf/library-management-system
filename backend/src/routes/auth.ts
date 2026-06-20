@@ -59,16 +59,6 @@ router.post('/register-tenant', async (req: Request, res: Response) => {
       expiryDaysAlert: 3,
     })
 
-    // 4. Create default 10 seats
-    for (let i = 1; i <= 10; i++) {
-      await Seat.create({
-        _id: uuidv4(),
-        tenantId: tenant._id,
-        seatNumber: `Seat-${i}`,
-        status: 'AVAILABLE',
-        areaName: 'General Hall',
-      })
-    }
 
     // 5. Create 3 default shifts
     const shiftA = await Shift.create({

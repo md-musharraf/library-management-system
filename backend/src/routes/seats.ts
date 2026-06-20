@@ -93,6 +93,61 @@ router.post('/', async (req: Request, res: Response) => {
   }
 })
 
+// Create seats in bulk
+router.post('/bulk', async (req: Request, res: Response) => {
+  const tenantId = req.tenantId!
+  const { startNumber, endNumber, prefix, areaName } = req.body
+
+  const start = parseInt(startNumber, 10)
+  const end = parseInt(endNumber, 10)
+  const seatPrefix = prefix !== undefined ? String(prefix) : 'Seat-'
+  const area = areaName || 'General Zone'
+
+  if (isNaN(start) || isNaN(end) || start > end) {
+    return res.status(400).json({ error: 'Valid startNumber and endNumber are required, and startNumber must be <= endNumber' })
+  }
+
+  // Cap bulk creation to 500 at a time to prevent server/database overloading
+  if (end - start > 500) {
+    return res.status(400).json({ error: 'Bulk creation is limited to 500 seats at a time.' })
+  }
+
+  try {
+    const createdSeats = []
+    const skippedSeats = []
+
+    // Fetch existing seats to prevent duplicates
+    const existingSeats = await Seat.find({ tenantId })
+    const existingSeatNumbers = new Set<string>(existingSeats.map(s => String(s.seatNumber)))
+
+    for (let i = start; i <= end; i++) {
+      const seatNumber = `${seatPrefix}${i}`
+      if (existingSeatNumbers.has(seatNumber)) {
+        skippedSeats.push(seatNumber)
+        continue
+      }
+
+      const seat = await Seat.create({
+        _id: uuidv4(),
+        tenantId,
+        seatNumber,
+        status: 'AVAILABLE',
+        areaName: area,
+      })
+      createdSeats.push(seat)
+    }
+
+    return res.status(201).json({
+      message: `Bulk creation complete. Created ${createdSeats.length} seats. Skipped ${skippedSeats.length} duplicates.`,
+      createdCount: createdSeats.length,
+      skippedCount: skippedSeats.length
+    })
+  } catch (error) {
+    console.error('Bulk create seats error:', error)
+    return res.status(500).json({ error: 'Internal server error creating seats in bulk' })
+  }
+})
+
 // Book a seat (assign student to seat)
 router.post('/book', async (req: Request, res: Response) => {
   const tenantId = req.tenantId!

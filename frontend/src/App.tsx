@@ -4162,6 +4162,10 @@ function SeatsView({ showToast }: { showToast: (msg: string, type?: 'success' | 
   const [isAddSeatModalOpen, setIsAddSeatModalOpen] = useState(false)
   const [newSeatNumber, setNewSeatNumber] = useState('')
   const [newAreaName, setNewAreaName] = useState('General Hall')
+  const [isBulkSeat, setIsBulkSeat] = useState(false)
+  const [bulkPrefix, setBulkPrefix] = useState('Seat-')
+  const [bulkStart, setBulkStart] = useState('1')
+  const [bulkEnd, setBulkEnd] = useState('50')
 
   const fetchSeats = async (bypassCache = false) => {
     setLoading(true)
@@ -4240,13 +4244,30 @@ function SeatsView({ showToast }: { showToast: (msg: string, type?: 'success' | 
   const handleCreateSeat = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await api.post('/seats', { seatNumber: newSeatNumber, areaName: newAreaName })
-      showToast(`Seat ${newSeatNumber} created!`, 'success')
+      if (isBulkSeat) {
+        const startNum = parseInt(bulkStart, 10)
+        const endNum = parseInt(bulkEnd, 10)
+        if (isNaN(startNum) || isNaN(endNum) || startNum > endNum) {
+          showToast('Invalid start or end number', 'error')
+          return
+        }
+        const res = await api.post('/seats/bulk', {
+          startNumber: startNum,
+          endNumber: endNum,
+          prefix: bulkPrefix,
+          areaName: newAreaName
+        })
+        showToast(res.message || 'Bulk seats created successfully!', 'success')
+      } else {
+        await api.post('/seats', { seatNumber: newSeatNumber, areaName: newAreaName })
+        showToast(`Seat ${newSeatNumber} created!`, 'success')
+      }
       setIsAddSeatModalOpen(false)
       setNewSeatNumber('')
+      setIsBulkSeat(false)
       fetchSeats(true)
     } catch (err: any) {
-      showToast(err.message || 'Error creating seat', 'error')
+      showToast(err.message || 'Error creating seat(s)', 'error')
     }
   }
 
@@ -4568,21 +4589,65 @@ function SeatsView({ showToast }: { showToast: (msg: string, type?: 'success' | 
             <h3 className="font-bold text-base text-white mb-4">Add Library Seat</h3>
             
             <form onSubmit={handleCreateSeat} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Seat Code / Number</label>
-                <input 
-                  type="text" required placeholder="e.g. S-10, A-5" 
-                  value={newSeatNumber} onChange={(e) => setNewSeatNumber(e.target.value)}
-                  className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+              <div className="flex items-center gap-2 mb-2 bg-app-bg/50 p-2.5 rounded-xl border border-app-border">
+                <input
+                  type="checkbox"
+                  id="isBulkSeat"
+                  checked={isBulkSeat}
+                  onChange={(e) => setIsBulkSeat(e.target.checked)}
+                  className="w-3.5 h-3.5 text-violet-600 border-app-border rounded focus:ring-violet-500 bg-app-bg"
                 />
+                <label htmlFor="isBulkSeat" className="text-[10px] font-bold uppercase tracking-wider text-slate-300 cursor-pointer select-none">
+                  Create Seats in Bulk (Range)
+                </label>
               </div>
+
+              {!isBulkSeat ? (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Seat Code / Number</label>
+                  <input 
+                    type="text" required placeholder="e.g. S-10, A-5" 
+                    value={newSeatNumber} onChange={(e) => setNewSeatNumber(e.target.value)}
+                    className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Seat Prefix</label>
+                    <input 
+                      type="text" required placeholder="e.g. Seat-, S-" 
+                      value={bulkPrefix} onChange={(e) => setBulkPrefix(e.target.value)}
+                      className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Start Number</label>
+                      <input 
+                        type="number" min="1" required placeholder="1" 
+                        value={bulkStart} onChange={(e) => setBulkStart(e.target.value)}
+                        className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">End Number</label>
+                      <input 
+                        type="number" min="1" required placeholder="100" 
+                        value={bulkEnd} onChange={(e) => setBulkEnd(e.target.value)}
+                        className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Area / Room Name</label>
                 <input 
                   type="text" required placeholder="e.g. Silent Hall, Discussion Room" 
                   value={newAreaName} onChange={(e) => setNewAreaName(e.target.value)}
-                  className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                  className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
                 />
               </div>
 
