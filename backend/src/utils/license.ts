@@ -46,13 +46,20 @@ export function validateLicenseKey(key: string): {
     return { valid: false, error: 'Empty license key' }
   }
 
-  const parts = key.split('-')
-  // Format should be: LMS-<payload>-<signature>
-  if (parts.length !== 3 || parts[0] !== 'LMS') {
+  // Format: LMS-<base64url_payload>-<hex_signature>
+  // Must NOT use .split('-') naively — base64url alphabet includes '-' as a valid character
+  if (!key.startsWith('LMS-')) {
     return { valid: false, error: 'Invalid license key format' }
   }
 
-  const [, payloadBase64, signature] = parts
+  const withoutPrefix = key.slice(4) // Remove "LMS-"
+  const lastDashIdx = withoutPrefix.lastIndexOf('-')
+  if (lastDashIdx === -1) {
+    return { valid: false, error: 'Invalid license key format' }
+  }
+
+  const payloadBase64 = withoutPrefix.slice(0, lastDashIdx)
+  const signature = withoutPrefix.slice(lastDashIdx + 1)
 
   try {
     const secret = getSecret()

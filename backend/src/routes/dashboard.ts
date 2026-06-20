@@ -131,13 +131,18 @@ router.get('/charts', async (req: Request, res: Response) => {
       monthlyRegistrations[key] = (monthlyRegistrations[key] || 0) + 1
     })
 
-    const currentYear = new Date().getFullYear()
-    const defaultKeys = [`Mar ${currentYear}`, `Apr ${currentYear}`, `May ${currentYear}`, `Jun ${currentYear}`]
+    // Build a rolling 6-month window ending at the current month
+    const now = new Date()
+    const rollingKeys: string[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      rollingKeys.push(`${months[d.getMonth()]} ${d.getFullYear()}`)
+    }
 
-    const chartData = defaultKeys.map((key) => ({
+    const chartData = rollingKeys.map((key) => ({
       month: key,
-      revenue: monthlyRevenue[key] || (key.startsWith('Jun') ? 4000 : key.startsWith('May') ? 1500 : 0),
-      registrations: monthlyRegistrations[key] || (key.startsWith('Jun') ? 3 : key.startsWith('May') ? 1 : 0),
+      revenue: monthlyRevenue[key] || 0,
+      registrations: monthlyRegistrations[key] || 0,
     }))
 
     return res.json(chartData)

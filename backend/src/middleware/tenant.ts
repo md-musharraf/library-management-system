@@ -6,6 +6,7 @@ declare global {
   namespace Express {
     interface Request {
       tenantId?: string
+      tenantDoc?: any
       userId?: string
       userRole?: string
     }
@@ -32,6 +33,7 @@ export async function tenantMiddleware(req: Request, res: Response, next: NextFu
     }
 
     req.tenantId = tenantId
+    req.tenantDoc = tenantExists  // Attach for downstream middleware to reuse
     next()
   } catch (error) {
     console.error('Error validating tenant ID:', error)

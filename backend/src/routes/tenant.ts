@@ -9,7 +9,8 @@ router.get('/profile', async (req: Request, res: Response) => {
   const tenantId = req.tenantId!
 
   try {
-    const tenant = await Tenant.findById(tenantId)
+    // Reuse tenantDoc from tenantMiddleware if available; fallback to fresh fetch
+    const tenant = req.tenantDoc || await Tenant.findById(tenantId)
 
     if (!tenant) {
       return res.status(404).json({ error: 'Tenant not found' })

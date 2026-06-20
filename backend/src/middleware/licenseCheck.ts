@@ -9,7 +9,8 @@ export async function licenseCheck(req: Request, res: Response, next: NextFuncti
   }
 
   try {
-    const tenant = await Tenant.findById(tenantId)
+    // Reuse the tenant document attached by tenantMiddleware to avoid a second DB hit
+    const tenant = req.tenantDoc || await Tenant.findById(tenantId)
 
     if (!tenant) {
       return res.status(404).json({ error: 'Tenant not found' })

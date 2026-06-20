@@ -42,6 +42,8 @@ const WhatsappConfigSchema = new mongoose_1.Schema({
     apiUrl: { type: String, default: '' },
     token: { type: String, default: '' },
     providerType: { type: String, default: 'ULTRAMSG' },
+    notificationChannel: { type: String, enum: ['MANUAL_WHATSAPP', 'API_WHATSAPP', 'SMS'], default: 'MANUAL_WHATSAPP' },
+    fast2smsApiKey: { type: String, default: '' },
     templateWelcome: { type: String, default: 'Hello {student_name}, welcome to {library_name}! Your registration code is {registration_no}.' },
     templateExpiry: { type: String, default: 'Dear {student_name}, your seat {seat_number} subscription ({shift} shift) at {library_name} expires on {expiry_date}. Please renew.' },
     expiryDaysAlert: { type: Number, default: 3 },

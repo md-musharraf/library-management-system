@@ -25,7 +25,30 @@ import { rateLimiter } from './middleware/rateLimiter'
 const app = express()
 const PORT = process.env.PORT || 5000
 
-app.use(cors())
+// CORS — allows local dev by default; set CORS_ORIGIN in env for production
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:4173']
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, curl)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error(`CORS blocked: origin '${origin}' is not permitted`))
+    }
+  },
+  credentials: true
+}))
+
+// Basic security headers
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  next()
+})
+
 app.use(express.json())
 
 // Apply Rate Limiting Middleware

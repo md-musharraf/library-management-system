@@ -8,7 +8,7 @@ const router = Router()
 // Admin Secret Config
 const getAdminUsername = () => process.env.ADMIN_USERNAME || 'admin'
 const getAdminPassword = () => process.env.ADMIN_PASSWORD || 'admin123'
-const getJwtSecret = () => process.env.JWT_SECRET || 'jwt-default-secret-key-123456789'
+const getJwtSecret = () => process.env.JWT_SECRET || 'lms-super-secret-jwt-key'
 
 // Admin authentication middleware
 export function adminAuth(req: Request, res: Response, next: NextFunction) {

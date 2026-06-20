@@ -4,6 +4,7 @@ const express_1 = require("express");
 const uuid_1 = require("uuid");
 const models_1 = require("../models");
 const time_1 = require("../utils/time");
+const notification_1 = require("../utils/notification");
 const router = (0, express_1.Router)();
 // Get config (creates default if not exists)
 router.get('/config', async (req, res) => {
@@ -17,6 +18,8 @@ router.get('/config', async (req, res) => {
                 apiUrl: '',
                 token: '',
                 providerType: 'ULTRAMSG',
+                notificationChannel: 'MANUAL_WHATSAPP',
+                fast2smsApiKey: '',
                 templateWelcome: 'Hello {student_name}, welcome to {library_name}! Your registration code is {registration_no}.',
                 templateExpiry: 'Dear {student_name}, your seat {seat_number} subscription ({shift} shift) at {library_name} expires on {expiry_date}. Please renew.',
                 expiryDaysAlert: 3,
@@ -32,13 +35,18 @@ router.get('/config', async (req, res) => {
 // Update config (upsert)
 router.post('/config', async (req, res) => {
     const tenantId = req.tenantId;
-    const { apiUrl, token, providerType, templateWelcome, templateExpiry, expiryDaysAlert } = req.body;
+    const { apiUrl, token, providerType, templateWelcome, templateExpiry, expiryDaysAlert, notificationChannel, fast2smsApiKey } = req.body;
+    if (notificationChannel && !['MANUAL_WHATSAPP', 'API_WHATSAPP', 'SMS'].includes(notificationChannel)) {
+        return res.status(400).json({ error: 'Invalid notification channel selected' });
+    }
     try {
         const updated = await models_1.WhatsappConfig.findOneAndUpdate({ tenantId }, {
             $set: {
                 apiUrl: apiUrl ?? '',
                 token: token ?? '',
                 providerType: providerType ?? 'ULTRAMSG',
+                notificationChannel: notificationChannel ?? 'MANUAL_WHATSAPP',
+                fast2smsApiKey: fast2smsApiKey ?? '',
                 templateWelcome: templateWelcome ?? '',
                 templateExpiry: templateExpiry ?? '',
                 expiryDaysAlert: expiryDaysAlert ? Number(expiryDaysAlert) : 3,
@@ -81,9 +89,6 @@ router.post('/send-manual', async (req, res) => {
             return res.status(404).json({ error: 'Active booking not found' });
         }
         const config = await models_1.WhatsappConfig.findOne({ tenantId });
-        if (!config || !config.apiUrl || !config.token) {
-            return res.status(400).json({ error: 'WhatsApp API credentials are not configured. Please go to settings.' });
-        }
         const tenant = await models_1.Tenant.findById(tenantId);
         const b = booking;
         const payments = await models_1.Payment.find({ bookingId });
@@ -94,33 +99,24 @@ router.post('/send-manual', async (req, res) => {
             month: 'short',
             year: 'numeric',
         });
-        const compiledMessage = config.templateExpiry
+        const compiledMessage = (config || { templateExpiry: '' }).templateExpiry
             .replace('{student_name}', b.student?.name || '')
             .replace('{seat_number}', b.seat?.seatNumber || '')
             .replace('{shift}', `${b.shift?.name} (${(0, time_1.formatTimeTo12h)(b.shift?.startTime)}-${(0, time_1.formatTimeTo12h)(b.shift?.endTime)})`)
             .replace('{expiry_date}', formattedExpiryDate)
             .replace('{due_amount}', due.toFixed(2))
             .replace('{library_name}', tenant?.name || 'Library');
-        console.log(`\n=== SIMULATED WHATSAPP SEND ===`);
-        console.log(`To: ${b.student?.phone}`);
-        console.log(`API URL: ${config.apiUrl}`);
-        console.log(`Message Body: "${compiledMessage}"`);
-        console.log(`================================\n`);
-        const log = await models_1.MessageLog.create({
-            _id: (0, uuid_1.v4)(),
-            tenantId,
-            recipient: b.student?.phone,
-            message: compiledMessage,
-            status: 'SENT',
-        });
+        const dispatchResult = await (0, notification_1.sendNotification)(tenantId, b.student?.phone, compiledMessage);
         return res.json({
-            message: 'WhatsApp message sent successfully (simulated)',
-            log: log.toJSON(),
+            message: dispatchResult.mode === 'MANUAL'
+                ? 'Manual WhatsApp prepared'
+                : `${dispatchResult.mode} message sent successfully`,
+            ...dispatchResult
         });
     }
     catch (error) {
-        console.error('Manual whatsapp send error:', error);
-        return res.status(500).json({ error: 'Internal server error triggering WhatsApp message' });
+        console.error('Manual expiry alert send error:', error);
+        return res.status(500).json({ error: error.message || 'Internal server error triggering message alert' });
     }
 });
 // Send custom manual alert to any student
@@ -135,30 +131,17 @@ router.post('/send-custom', async (req, res) => {
         if (!student) {
             return res.status(404).json({ error: 'Student not found' });
         }
-        const config = await models_1.WhatsappConfig.findOne({ tenantId });
-        if (!config || !config.apiUrl || !config.token) {
-            return res.status(400).json({ error: 'WhatsApp API credentials are not configured. Please go to settings.' });
-        }
-        console.log(`\n=== SIMULATED WHATSAPP CUSTOM SEND ===`);
-        console.log(`To: ${student.phone} (${student.name})`);
-        console.log(`API URL: ${config.apiUrl}`);
-        console.log(`Message Body: "${message}"`);
-        console.log(`======================================\n`);
-        const log = await models_1.MessageLog.create({
-            _id: (0, uuid_1.v4)(),
-            tenantId,
-            recipient: student.phone,
-            message,
-            status: 'SENT',
-        });
+        const dispatchResult = await (0, notification_1.sendNotification)(tenantId, student.phone, message);
         return res.json({
-            message: 'WhatsApp message sent successfully (simulated)',
-            log: log.toJSON(),
+            message: dispatchResult.mode === 'MANUAL'
+                ? 'Manual WhatsApp prepared'
+                : `${dispatchResult.mode} message sent successfully`,
+            ...dispatchResult
         });
     }
     catch (error) {
-        console.error('Custom whatsapp send error:', error);
-        return res.status(500).json({ error: 'Internal server error triggering WhatsApp message' });
+        console.error('Custom alert send error:', error);
+        return res.status(500).json({ error: error.message || 'Internal server error triggering message alert' });
     }
 });
 exports.default = router;

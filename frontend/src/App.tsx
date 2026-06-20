@@ -161,6 +161,8 @@ interface WhatsappConfig {
   apiUrl: string
   token: string
   providerType: string
+  notificationChannel: 'MANUAL_WHATSAPP' | 'API_WHATSAPP' | 'SMS'
+  fast2smsApiKey: string
   templateWelcome: string
   templateExpiry: string
   expiryDaysAlert: number
@@ -307,6 +309,92 @@ export default function App() {
 
   // Developer Admin State
   const [adminToken, setAdminToken] = useState<string | null>(localStorage.getItem('lms_admin_token'))
+
+  // Manual Outbox Modal states
+  const [manualOutbox, setManualOutbox] = useState<{
+    studentName: string
+    phone: string
+    message: string
+    studentId?: string
+    metadata?: {
+      registrationNo?: string
+      seatNumber?: string
+      shiftName?: string
+      expiryDate?: string
+      dueAmount?: number
+      planName?: string
+    }
+  } | null>(null)
+
+  const triggerManualMsg = (
+    studentName: string, 
+    phone: string, 
+    message: string,
+    studentId?: string,
+    metadata?: {
+      registrationNo?: string
+      seatNumber?: string
+      shiftName?: string
+      expiryDate?: string
+      dueAmount?: number
+      planName?: string
+    }
+  ) => {
+    setManualOutbox({
+      studentName,
+      phone: phone.replace(/[^0-9]/g, ''),
+      message,
+      studentId,
+      metadata
+    })
+  }
+
+  // Template tab, copied and editable message states
+  const [selectedTemplateTab, setSelectedTemplateTab] = useState<'prepared' | 'welcome' | 'expiry' | 'dues' | 'custom'>('prepared')
+  const [isCopied, setIsCopied] = useState(false)
+  const [editableMessage, setEditableMessage] = useState('')
+
+  useEffect(() => {
+    if (manualOutbox) {
+      setSelectedTemplateTab('prepared')
+      setEditableMessage(manualOutbox.message)
+      setIsCopied(false)
+    } else {
+      setEditableMessage('')
+    }
+  }, [manualOutbox])
+
+  const compileTemplate = (tab: 'prepared' | 'welcome' | 'expiry' | 'dues' | 'custom') => {
+    if (!manualOutbox) return ''
+
+    const libraryName = localStorage.getItem('lms_tenant_name') || 'Library'
+    const studentName = manualOutbox.studentName
+    const registrationNo = manualOutbox.metadata?.registrationNo || '[Reg. No.]'
+    const seatNumber = manualOutbox.metadata?.seatNumber || '[Seat No.]'
+    const shiftName = manualOutbox.metadata?.shiftName || '[Shift]'
+    const expiryDate = manualOutbox.metadata?.expiryDate || '[Expiry Date]'
+    const dueAmount = manualOutbox.metadata?.dueAmount !== undefined ? `₹${manualOutbox.metadata.dueAmount}` : '[Due Amount]'
+
+    switch (tab) {
+      case 'prepared':
+        return manualOutbox.message
+      case 'welcome':
+        return `Hello ${studentName}, welcome to ${libraryName}! Your registration code is ${registrationNo}.`
+      case 'expiry':
+        return `Dear ${studentName}, your seat ${seatNumber} subscription (${shiftName} shift) at ${libraryName} expires on ${expiryDate}. Please renew to secure your seat.`
+      case 'dues':
+        return `Dear ${studentName}, this is a reminder to clear your pending dues of ${dueAmount} for seat ${seatNumber} at ${libraryName}. Please pay at your earliest convenience. Thank you.`
+      case 'custom':
+        return `Dear ${studentName},\n\nRegards,\n${libraryName}`
+      default:
+        return ''
+    }
+  }
+
+  const handleTemplateTabChange = (tab: 'prepared' | 'welcome' | 'expiry' | 'dues' | 'custom') => {
+    setSelectedTemplateTab(tab)
+    setEditableMessage(compileTemplate(tab))
+  }
 
   // License State
   const [licenseStatus, setLicenseStatus] = useState<any>(null)
@@ -670,10 +758,10 @@ export default function App() {
 
             {/* Tab Containers */}
             <div className="flex-1 overflow-y-auto p-4 md:p-8">
-              {currentTab === 'dashboard' && <DashboardView showToast={showToast} />}
-              {currentTab === 'students' && <StudentsView showToast={showToast} />}
+              {currentTab === 'dashboard' && <DashboardView showToast={showToast} triggerManualMsg={triggerManualMsg} />}
+              {currentTab === 'students' && <StudentsView showToast={showToast} triggerManualMsg={triggerManualMsg} />}
               {currentTab === 'seats' && <SeatsView showToast={showToast} />}
-              {currentTab === 'attendance' && <AttendanceView showToast={showToast} setCurrentTab={setCurrentTab} />}
+              {currentTab === 'attendance' && <AttendanceView showToast={showToast} setCurrentTab={setCurrentTab} triggerManualMsg={triggerManualMsg} />}
               {currentTab === 'expenses' && <ExpensesView showToast={showToast} />}
               {currentTab === 'plans' && <PlansAndShiftsView showToast={showToast} />}
               {currentTab === 'settings' && <SettingsView showToast={showToast} setTenantName={setTenantName} setLogoUrl={setLogoUrl} />}
@@ -711,6 +799,168 @@ export default function App() {
               active={currentTab === 'settings'} onClick={() => setCurrentTab('settings')} 
             />
           </nav>
+        </div>
+      )}
+
+      {/* Manual Outbox / Message Preview Modal */}
+      {manualOutbox && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => setManualOutbox(null)}
+        >
+          <div 
+            className="w-full max-w-lg bg-app-surface border border-app-border rounded-3xl p-6 shadow-2xl relative space-y-5 flex flex-col animate-scale-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setManualOutbox(null)}
+              className="absolute top-4 right-4 p-1.5 bg-app-bg border border-app-border rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-violet-600/20 rounded-2xl border border-violet-500/30 text-violet-400">
+                <Send className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-md">Manual WhatsApp Outbox</h3>
+                <span className="text-[10px] text-violet-400 font-bold tracking-wider uppercase font-sans">Preview, Edit & Select Templates</span>
+              </div>
+            </div>
+
+            {/* Recipient Details & Metadata Badges */}
+            <div className="p-4 bg-app-bg/50 border border-app-border rounded-2xl space-y-2.5 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 font-medium">Recipient Student:</span>
+                <span className="font-bold text-white flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-violet-400" />
+                  {manualOutbox.studentName}
+                </span>
+              </div>
+              <div className="flex justify-between items-center border-t border-app-border/40 pt-2">
+                <span className="text-slate-400 font-medium">WhatsApp Number:</span>
+                <span className="font-mono font-bold text-violet-400 flex items-center gap-1">
+                  +{manualOutbox.phone}
+                </span>
+              </div>
+              
+              {/* Optional Metadata Badges */}
+              {(manualOutbox.metadata?.seatNumber || manualOutbox.metadata?.dueAmount !== undefined || manualOutbox.metadata?.expiryDate) && (
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-app-border/40">
+                  {manualOutbox.metadata.seatNumber && (
+                    <span className="px-2 py-0.5 bg-slate-800 border border-slate-700/60 rounded-lg text-[10px] text-slate-300 font-semibold">
+                      Seat: {manualOutbox.metadata.seatNumber}
+                    </span>
+                  )}
+                  {manualOutbox.metadata.shiftName && (
+                    <span className="px-2 py-0.5 bg-slate-800 border border-slate-700/60 rounded-lg text-[10px] text-slate-300 font-semibold">
+                      Shift: {manualOutbox.metadata.shiftName}
+                    </span>
+                  )}
+                  {manualOutbox.metadata.expiryDate && (
+                    <span className="px-2 py-0.5 bg-rose-500/10 border border-rose-500/20 rounded-lg text-[10px] text-rose-400 font-semibold">
+                      Expiry: {manualOutbox.metadata.expiryDate}
+                    </span>
+                  )}
+                  {manualOutbox.metadata.dueAmount !== undefined && (
+                    <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] text-amber-400 font-semibold">
+                      Dues: ₹{manualOutbox.metadata.dueAmount}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Template Selector */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-sans">Select Template</label>
+              <div className="flex gap-1.5 overflow-x-auto pb-1 flex-wrap">
+                {[
+                  { id: 'prepared', label: '📝 Prepared' },
+                  { id: 'welcome', label: '👋 Welcome' },
+                  { id: 'expiry', label: '⏳ Expiry' },
+                  { id: 'dues', label: '💰 Fees Due' },
+                  { id: 'custom', label: '📢 Notice' }
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleTemplateTabChange(t.id as any)}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border cursor-pointer whitespace-nowrap ${
+                      selectedTemplateTab === t.id
+                        ? 'bg-violet-600/25 text-violet-400 border-violet-500/40'
+                        : 'bg-app-bg text-slate-400 border-app-border hover:text-white'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Editable Textarea with Characters/Words Counter */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-sans">Message Text (Editable)</label>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  {editableMessage.length} chars | {editableMessage.trim().split(/\s+/).filter(Boolean).length} words
+                </span>
+              </div>
+              <textarea 
+                rows={5}
+                value={editableMessage}
+                onChange={(e) => {
+                  setEditableMessage(e.target.value)
+                  setSelectedTemplateTab('custom')
+                }}
+                className="w-full bg-app-bg border border-app-border rounded-xl p-3.5 text-xs text-white focus:outline-none focus:border-violet-500 transition-colors font-mono leading-relaxed resize-none"
+                placeholder="Enter alert message details..."
+              />
+            </div>
+
+            {/* Actions Grid */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(editableMessage)
+                  setIsCopied(true)
+                  showToast('Copied message text to clipboard!', 'success')
+                  setTimeout(() => setIsCopied(false), 2000)
+                }}
+                className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                  isCopied
+                    ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-app-bg border-app-border text-slate-300 hover:text-white hover:border-slate-700'
+                }`}
+              >
+                {isCopied ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    Copied! ✓
+                  </>
+                ) : (
+                  <>
+                    Copy Message Text
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const encoded = encodeURIComponent(editableMessage)
+                  window.open(`https://wa.me/${manualOutbox.phone}?text=${encoded}`, '_blank')
+                  showToast('Opened WhatsApp in a new tab!', 'success')
+                  setManualOutbox(null)
+                }}
+                className="py-2.5 px-4 bg-[#10b981] hover:bg-[#0e9f6e] text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex justify-center items-center gap-1.5 border border-[#10b981]/20 shadow-lg shadow-[#10b981]/25 hover:shadow-[#10b981]/40"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Send via WhatsApp
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1505,10 +1755,25 @@ export function SeatDetailModal({
 // ==========================================
 function AttendanceView({
   showToast,
-  setCurrentTab
+  setCurrentTab,
+  triggerManualMsg
 }: {
   showToast: (msg: string, type?: 'success' | 'error') => void
   setCurrentTab?: (tab: any) => void
+  triggerManualMsg: (
+    name: string,
+    phone: string,
+    msg: string,
+    studentId?: string,
+    metadata?: {
+      registrationNo?: string
+      seatNumber?: string
+      shiftName?: string
+      expiryDate?: string
+      dueAmount?: number
+      planName?: string
+    }
+  ) => void
 }) {
   const [subTab, setSubTab] = useState<'map' | 'inside' | 'today' | 'history' | 'analytics'>('map')
   const [loading, setLoading] = useState(false)
@@ -2450,14 +2715,18 @@ function AttendanceView({
                   onClick={async () => {
                     setSendingOutreach(true)
                     try {
-                      await api.post('/whatsapp/send-custom', {
+                      const res = await api.post('/whatsapp/send-custom', {
                         studentId: outreachStudent.studentId,
                         message: outreachMessage
                       })
-                      showToast(`WhatsApp reminder sent to ${outreachStudent.name}!`, 'success')
+                      if (res.mode === 'MANUAL') {
+                        triggerManualMsg(outreachStudent.name, res.phone, res.message)
+                      } else {
+                        showToast(`${res.mode} message sent to ${outreachStudent.name}!`, 'success')
+                      }
                       setOutreachStudent(null)
                     } catch (err: any) {
-                      showToast(err.message || 'Failed to send outreach message', 'error')
+                      showToast(err.message || 'Failed to send message', 'error')
                     } finally {
                       setSendingOutreach(false)
                     }
@@ -2663,7 +2932,26 @@ function AnalyticsViewPanel({ data, onSendOutreach }: AnalyticsViewPanelProps) {
 // ==========================================
 // VIEW 1: Dashboard View Component
 // ==========================================
-function DashboardView({ showToast }: { showToast: (msg: string, type?: 'success' | 'error') => void }) {
+function DashboardView({ 
+  showToast, 
+  triggerManualMsg 
+}: { 
+  showToast: (msg: string, type?: 'success' | 'error') => void; 
+  triggerManualMsg: (
+    name: string, 
+    phone: string, 
+    msg: string,
+    studentId?: string,
+    metadata?: {
+      registrationNo?: string
+      seatNumber?: string
+      shiftName?: string
+      expiryDate?: string
+      dueAmount?: number
+      planName?: string
+    }
+  ) => void 
+}) {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
   const [expiring, setExpiring] = useState<ExpiringBooking[]>([])
   const [chartData, setChartData] = useState<any[]>([])
@@ -2695,10 +2983,21 @@ function DashboardView({ showToast }: { showToast: (msg: string, type?: 'success
   const triggerWhatsappAlert = async (bookingId: string, studentName: string) => {
     setSendingAlert(bookingId)
     try {
-      await api.post('/whatsapp/send-manual', { bookingId })
-      showToast(`WhatsApp reminder sent to ${studentName}!`, 'success')
+      const res = await api.post('/whatsapp/send-manual', { bookingId })
+      if (res.mode === 'MANUAL') {
+        const booking = expiring.find(b => b.bookingId === bookingId)
+        triggerManualMsg(studentName, res.phone, res.message, undefined, {
+          seatNumber: booking?.seatNumber,
+          shiftName: booking?.shift,
+          expiryDate: booking ? new Date(booking.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined,
+          dueAmount: booking?.dueAmount,
+          planName: booking?.planName
+        })
+      } else {
+        showToast(`${res.mode} message sent to ${studentName}!`, 'success')
+      }
     } catch (err: any) {
-      showToast(err.message || 'WhatsApp configuration error. Configure API keys.', 'error')
+      showToast(err.message || 'Notification configuration error.', 'error')
     } finally {
       setSendingAlert(null)
     }
@@ -3169,7 +3468,26 @@ function MetricCard({ title, value, subtitle, icon, color }: { title: string; va
 // ==========================================
 // VIEW 2: Student Management View Component
 // ==========================================
-function StudentsView({ showToast }: { showToast: (msg: string, type?: 'success' | 'error') => void }) {
+function StudentsView({ 
+  showToast,
+  triggerManualMsg
+}: { 
+  showToast: (msg: string, type?: 'success' | 'error') => void;
+  triggerManualMsg: (
+    name: string,
+    phone: string,
+    msg: string,
+    studentId?: string,
+    metadata?: {
+      registrationNo?: string
+      seatNumber?: string
+      shiftName?: string
+      expiryDate?: string
+      dueAmount?: number
+      planName?: string
+    }
+  ) => void
+}) {
   const [students, setStudents] = useState<Student[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -3288,6 +3606,20 @@ function StudentsView({ showToast }: { showToast: (msg: string, type?: 'success'
 
       showToast('Student registered successfully!', 'success')
       setIsAddModalOpen(false)
+
+      if (student.welcomeMessage && student.welcomeMessage.shouldSendManual) {
+        const { phone, message } = student.welcomeMessage
+        const assignedSeat = availableSeats.find(s => s.id === assignSeatId)
+        const assignedPlan = plans.find(p => p.id === assignPlanId)
+        const assignedShift = shifts.find(s => s.id === assignShiftId)
+
+        triggerManualMsg(student.name, phone, message, student.id, {
+          registrationNo: student.registrationNo,
+          seatNumber: assignedSeat?.seatNumber,
+          shiftName: assignedShift?.name,
+          planName: assignedPlan?.name
+        })
+      }
       // Reset inputs
       setNewName('')
       setNewPhone('')
@@ -4940,6 +5272,8 @@ function SettingsView({ showToast, setTenantName, setLogoUrl }: SettingsViewProp
   const [templateWelcome, setTemplateWelcome] = useState('')
   const [templateExpiry, setTemplateExpiry] = useState('')
   const [expiryDaysAlert, setExpiryDaysAlert] = useState(3)
+  const [notificationChannel, setNotificationChannel] = useState<'MANUAL_WHATSAPP' | 'API_WHATSAPP' | 'SMS'>('MANUAL_WHATSAPP')
+  const [fast2smsApiKey, setFast2smsApiKey] = useState('')
 
   const loadData = async () => {
     setLoading(true)
@@ -4967,6 +5301,8 @@ function SettingsView({ showToast, setTenantName, setLogoUrl }: SettingsViewProp
         setTemplateWelcome(whatsappData.templateWelcome || '')
         setTemplateExpiry(whatsappData.templateExpiry || '')
         setExpiryDaysAlert(whatsappData.expiryDaysAlert || 3)
+        setNotificationChannel(whatsappData.notificationChannel || 'MANUAL_WHATSAPP')
+        setFast2smsApiKey(whatsappData.fast2smsApiKey || '')
       }
       setLogs(messageLogs)
 
@@ -5035,9 +5371,11 @@ function SettingsView({ showToast, setTenantName, setLogoUrl }: SettingsViewProp
         templateWelcome,
         templateExpiry,
         expiryDaysAlert,
+        notificationChannel,
+        fast2smsApiKey,
       })
       setConfig(updated)
-      showToast('WhatsApp Configuration updated!', 'success')
+      showToast('Notification Gateway settings updated!', 'success')
     } catch (err: any) {
       showToast(err.message || 'Error updating config', 'error')
     } finally {
@@ -5235,11 +5573,13 @@ function SettingsView({ showToast, setTenantName, setLogoUrl }: SettingsViewProp
           <div className="lg:col-span-2 backdrop-blur-md bg-app-surface/40 border border-app-border p-5 rounded-2xl space-y-6">
             <div className="flex justify-between items-center">
               <div>
-                <h3 className="font-bold text-white text-sm">WhatsApp API Setup</h3>
-                <p className="text-xs text-slate-400">Configure your personal HTTP API parameters</p>
+                <h3 className="font-bold text-white text-sm">Notification Gateway Setup</h3>
+                <p className="text-xs text-slate-400">Configure your automated alert channel and parameters</p>
               </div>
-              {config && config.apiUrl ? (
-                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded-lg">Connected</span>
+              {notificationChannel === 'MANUAL_WHATSAPP' ? (
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded-lg">Manual Mode Active</span>
+              ) : (config && (config.apiUrl || config.fast2smsApiKey)) ? (
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded-lg">API Connected</span>
               ) : (
                 <span className="text-[10px] bg-rose-500/10 text-rose-400 font-bold px-2 py-0.5 rounded-lg">Not Configured</span>
               )}
@@ -5248,15 +5588,15 @@ function SettingsView({ showToast, setTenantName, setLogoUrl }: SettingsViewProp
             <form onSubmit={handleSaveWhatsapp} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">API Provider</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Preferred Channel</label>
                   <select
-                    value={providerType}
-                    onChange={(e) => setProviderType(e.target.value)}
+                    value={notificationChannel}
+                    onChange={(e) => setNotificationChannel(e.target.value as any)}
                     className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
                   >
-                    <option value="ULTRAMSG">UltraMsg API</option>
-                    <option value="WATI">Wati API</option>
-                    <option value="GENERIC_HTTP">Generic HTTP Webhook</option>
+                    <option value="MANUAL_WHATSAPP">Manual WhatsApp (100% Free)</option>
+                    <option value="API_WHATSAPP">Automatic WhatsApp API (Paid)</option>
+                    <option value="SMS">Fast2SMS Text Alerts (Paid)</option>
                   </select>
                 </div>
                 <div>
@@ -5268,21 +5608,57 @@ function SettingsView({ showToast, setTenantName, setLogoUrl }: SettingsViewProp
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Gateway Endpoint URL</label>
-                <input 
-                  type="text" placeholder="https://api.ultramsg.com/instance..." value={apiUrl} onChange={(e) => setApiUrl(e.target.value)}
-                  className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
-                />
-              </div>
+              {notificationChannel === 'MANUAL_WHATSAPP' && (
+                <div className="p-4 bg-violet-600/5 border border-violet-500/20 rounded-xl text-xs space-y-1">
+                  <p className="font-bold text-violet-400">Manual Redirect Active</p>
+                  <p className="text-slate-400 leading-normal">
+                    Reminders and welcome messages will be compiled on the server. The system will prompt you with a pre-filled link to open and send messages directly via WhatsApp Web / App. No external APIs or setup fees are required!
+                  </p>
+                </div>
+              )}
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Auth Secret/Token</label>
-                <input 
-                  type="password" placeholder="Token" value={token} onChange={(e) => setToken(e.target.value)}
-                  className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
-                />
-              </div>
+              {notificationChannel === 'API_WHATSAPP' && (
+                <div className="space-y-4 border-t border-app-border/40 pt-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">API Provider</label>
+                    <select
+                      value={providerType}
+                      onChange={(e) => setProviderType(e.target.value)}
+                      className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+                    >
+                      <option value="ULTRAMSG">UltraMsg API</option>
+                      <option value="WATI">Wati API</option>
+                      <option value="GENERIC_HTTP">Generic HTTP Webhook</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Gateway Endpoint URL</label>
+                    <input 
+                      type="text" placeholder="https://api.ultramsg.com/instance..." value={apiUrl} onChange={(e) => setApiUrl(e.target.value)}
+                      className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Auth Secret/Token</label>
+                    <input 
+                      type="password" placeholder="Token" value={token} onChange={(e) => setToken(e.target.value)}
+                      className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {notificationChannel === 'SMS' && (
+                <div className="space-y-4 border-t border-app-border/40 pt-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Fast2SMS API Key</label>
+                    <input 
+                      type="password" placeholder="Enter Fast2SMS API Authorization Key" value={fast2smsApiKey} onChange={(e) => setFast2smsApiKey(e.target.value)}
+                      className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="border-t border-app-border pt-4 space-y-4">
                 <h4 className="text-xs font-bold text-white uppercase tracking-wider">Templates Configuration</h4>

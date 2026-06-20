@@ -5,6 +5,7 @@ const uuid_1 = require("uuid");
 const models_1 = require("../models");
 const time_1 = require("../utils/time");
 const regNo_1 = require("../utils/regNo");
+const notification_1 = require("../utils/notification");
 const router = (0, express_1.Router)();
 // Get all students (with optional search filter)
 router.get('/', async (req, res) => {
@@ -133,29 +134,39 @@ router.post('/', async (req, res) => {
         await student.save();
         // Update lastRegNo
         await models_1.Tenant.findByIdAndUpdate(tenantId, { lastRegNo: registrationNo });
-        // Try sending welcome WhatsApp
+        let welcomeMessagePayload = null;
+        // Try sending welcome Alert
         try {
             const config = await models_1.WhatsappConfig.findOne({ tenantId });
             const tenant = await models_1.Tenant.findById(tenantId);
-            if (config && config.apiUrl && config.token) {
+            const channel = config?.notificationChannel || 'MANUAL_WHATSAPP';
+            if (config && config.templateWelcome) {
                 const msg = config.templateWelcome
                     .replace('{student_name}', student.name)
                     .replace('{registration_no}', student.registrationNo)
                     .replace('{library_name}', tenant?.name || 'Library');
-                console.log(`[WHATSAPP AUTOMATION] Sending welcome message: ${msg}`);
-                await models_1.MessageLog.create({
-                    _id: (0, uuid_1.v4)(),
-                    tenantId,
-                    recipient: student.phone,
-                    message: msg,
-                    status: 'SENT',
-                });
+                if (channel === 'MANUAL_WHATSAPP') {
+                    welcomeMessagePayload = {
+                        shouldSendManual: true,
+                        phone: student.phone.replace(/[^0-9]/g, ''),
+                        message: msg
+                    };
+                }
+                else {
+                    // Send automatically in background
+                    (0, notification_1.sendNotification)(tenantId, student.phone, msg).catch((err) => {
+                        console.error('[AUTO WELCOME ERROR]', err);
+                    });
+                }
             }
         }
         catch (wsErr) {
-            console.error('Failed to trigger welcome WhatsApp message:', wsErr);
+            console.error('Failed to trigger welcome message:', wsErr);
         }
-        return res.status(201).json(student.toJSON());
+        return res.status(201).json({
+            ...student.toJSON(),
+            welcomeMessage: welcomeMessagePayload
+        });
     }
     catch (error) {
         console.error('Create student error:', error);

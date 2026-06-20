@@ -9,9 +9,10 @@ const SessionSchema = new Schema(
     token: { type: String, required: true, index: true },
     ip: { type: String },
     userAgent: { type: String },
-    lastActive: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    lastActive: { type: Date, default: Date.now, index: true }
   },
-  { timestamps: { createdAt: 'createdAt', updatedAt: 'lastActive' } }
+  { timestamps: false }  // Managed manually: createdAt on create, lastActive updated by auth middleware
 )
 
 SessionSchema.set('toJSON', {

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { Student, Tenant, Booking, Payment, WhatsappConfig, MessageLog } from '../models'
 import { formatTimeTo12h } from '../utils/time'
 import { getNextRegNo } from '../utils/regNo'
+import { sendNotification } from '../utils/notification'
 
 const router = Router()
 
@@ -116,11 +117,11 @@ router.post('/', async (req: Request, res: Response) => {
     let registrationNo: string
 
     if (customRegNo && customRegNo.trim()) {
-      const existing = await Student.findOne({ registrationNo: customRegNo.trim(), tenantId })
+      const existing = await Student.findOne({ registrationNo: customRegNo.trim().toUpperCase(), tenantId })
       if (existing) {
-        return res.status(400).json({ error: `Registration number '${customRegNo.trim()}' is already in use` })
+        return res.status(400).json({ error: `Registration number '${customRegNo.trim().toUpperCase()}' is already in use` })
       }
-      registrationNo = customRegNo.trim()
+      registrationNo = customRegNo.trim().toUpperCase()
     } else {
       const tenant = await Tenant.findById(tenantId) as any
       let candidate = getNextRegNo(tenant?.lastRegNo as string | null)
@@ -150,30 +151,41 @@ router.post('/', async (req: Request, res: Response) => {
     // Update lastRegNo
     await Tenant.findByIdAndUpdate(tenantId, { lastRegNo: registrationNo })
 
-    // Try sending welcome WhatsApp
+    let welcomeMessagePayload = null
+
+    // Try sending welcome Alert
     try {
       const config = await WhatsappConfig.findOne({ tenantId }) as any
       const tenant = await Tenant.findById(tenantId) as any
-      if (config && config.apiUrl && config.token) {
+      const channel = config?.notificationChannel || 'MANUAL_WHATSAPP'
+
+      if (config && config.templateWelcome) {
         const msg = (config.templateWelcome as string)
           .replace('{student_name}', (student as any).name)
           .replace('{registration_no}', (student as any).registrationNo)
           .replace('{library_name}', (tenant?.name as string) || 'Library')
 
-        console.log(`[WHATSAPP AUTOMATION] Sending welcome message: ${msg}`)
-        await MessageLog.create({
-          _id: uuidv4(),
-          tenantId,
-          recipient: (student as any).phone,
-          message: msg,
-          status: 'SENT',
-        })
+        if (channel === 'MANUAL_WHATSAPP') {
+          welcomeMessagePayload = {
+            shouldSendManual: true,
+            phone: (student as any).phone.replace(/[^0-9]/g, ''),
+            message: msg
+          }
+        } else {
+          // Send automatically in background
+          sendNotification(tenantId, (student as any).phone, msg).catch((err) => {
+            console.error('[AUTO WELCOME ERROR]', err)
+          })
+        }
       }
     } catch (wsErr) {
-      console.error('Failed to trigger welcome WhatsApp message:', wsErr)
+      console.error('Failed to trigger welcome message:', wsErr)
     }
 
-    return res.status(201).json(student.toJSON())
+    return res.status(201).json({
+      ...student.toJSON(),
+      welcomeMessage: welcomeMessagePayload
+    })
   } catch (error) {
     console.error('Create student error:', error)
     return res.status(500).json({ error: 'Internal server error creating student' })

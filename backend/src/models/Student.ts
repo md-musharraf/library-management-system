@@ -8,12 +8,14 @@ const StudentSchema = new Schema(
     name: { type: String, required: true },
     phone: { type: String, required: true },
     email: { type: String },
-    registrationNo: { type: String, required: true, unique: true },
+    registrationNo: { type: String, required: true },
     aadharNo: { type: String },
     status: { type: String, required: true, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
   },
   { timestamps: { createdAt: 'createdAt', updatedAt: false } }
 )
+
+StudentSchema.index({ tenantId: 1, registrationNo: 1 }, { unique: true })
 
 StudentSchema.set('toJSON', {
   transform: (_doc: any, ret: any) => {
