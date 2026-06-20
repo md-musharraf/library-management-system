@@ -61,7 +61,7 @@ app.use((req, res, next) => {
 });
 // Health check
 app.get('/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date(), db: 'MongoDB Atlas' });
+    res.json({ status: 'OK', version: '1.0.1-bulk-seats-v1', timestamp: new Date(), db: 'MongoDB Atlas' });
 });
 // Unprotected Auth & Admin routes
 app.use('/api/auth', auth_1.default);
