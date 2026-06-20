@@ -3556,6 +3556,79 @@ function StudentsView({
   const [plans, setPlans] = useState<Plan[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
 
+  // Change Timing input states
+  const [isChangeTimingModalOpen, setIsChangeTimingModalOpen] = useState(false)
+  const [changeTimingStudent, setChangeTimingStudent] = useState<Student | null>(null)
+  const [changeTimingSeatId, setChangeTimingSeatId] = useState('')
+  const [changeTimingPlanId, setChangeTimingPlanId] = useState('')
+  const [changeTimingShiftId, setChangeTimingShiftId] = useState('')
+  const [changeTimingPaymentMode, setChangeTimingPaymentMode] = useState('UPI')
+  const [changeTimingBookAllShifts, setChangeTimingBookAllShifts] = useState(false)
+  const [allSeatsList, setAllSeatsList] = useState<Seat[]>([])
+
+  const handleOpenChangeTimingModal = async (student: Student) => {
+    setChangeTimingStudent(student)
+    setIsChangeTimingModalOpen(true)
+    try {
+      const sData = await api.get('/seats')
+      setAllSeatsList(sData)
+      
+      const currentSeatObj = sData.find((s: Seat) => s.seatNumber === student.activeSeat)
+      if (currentSeatObj) {
+        setChangeTimingSeatId(currentSeatObj.id)
+      } else if (sData.length > 0) {
+        const avail = sData.find((s: Seat) => s.status === 'AVAILABLE')
+        if (avail) {
+          setChangeTimingSeatId(avail.id)
+        } else {
+          setChangeTimingSeatId(sData[0].id)
+        }
+      }
+
+      if (student.activeShiftId) {
+        setChangeTimingShiftId(student.activeShiftId)
+      } else if (shifts.length > 0) {
+        setChangeTimingShiftId(shifts[0].id)
+      }
+
+      const currentPlanObj = plans.find((p) => p.name === student.activePlan)
+      if (currentPlanObj) {
+        setChangeTimingPlanId(currentPlanObj.id)
+      } else if (plans.length > 0) {
+        setChangeTimingPlanId(plans[0].id)
+      }
+    } catch (err) {
+      console.error('Error opening change timing modal:', err)
+    }
+  }
+
+  const handleChangeTimingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!changeTimingStudent || !changeTimingSeatId || !changeTimingPlanId || (!changeTimingBookAllShifts && !changeTimingShiftId)) {
+      showToast('Please select all timing parameters', 'error')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await api.post('/seats/change-booking', {
+        studentId: changeTimingStudent.id,
+        seatId: changeTimingSeatId,
+        planId: changeTimingPlanId,
+        shiftId: changeTimingBookAllShifts ? undefined : changeTimingShiftId,
+        paymentMode: changeTimingPaymentMode,
+        bookAllShifts: changeTimingBookAllShifts,
+      })
+      showToast(`Timing for ${changeTimingStudent.name} updated successfully!`, 'success')
+      setIsChangeTimingModalOpen(false)
+      fetchStudents(true)
+    } catch (err: any) {
+      showToast(err.message || 'Failed to change student timing', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const fetchStudents = async (bypassCache = false) => {
     setLoading(true)
     try {
@@ -3831,20 +3904,32 @@ function StudentsView({
                         <span className="text-[10px] text-slate-500 italic">No Seat Assigned</span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-right space-x-2">
-                      <button 
-                        onClick={() => handleEditClick(s)}
-                        className="text-violet-400 hover:text-violet-300 font-semibold text-xs inline-flex items-center gap-1 bg-violet-600/10 px-2 py-1 rounded-lg"
-                      >
-                        <Edit className="w-3 h-3" />
-                        <span>Edit</span>
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteStudent(s.id)}
-                        className="text-red-400 hover:text-red-300 font-semibold text-xs bg-red-600/10 px-2 py-1 rounded-lg"
-                      >
-                        Delete
-                      </button>
+                    <td className="px-5 py-4 text-right">
+                      <div className="flex flex-col sm:flex-row gap-2 justify-end items-stretch sm:items-center w-full min-w-[200px] sm:min-w-0">
+                        {s.hasActiveBooking && (
+                          <button 
+                            onClick={() => handleOpenChangeTimingModal(s)}
+                            className="text-amber-400 hover:text-amber-300 font-semibold text-xs inline-flex items-center justify-center gap-1 bg-amber-500/10 px-2.5 py-1.5 rounded-lg cursor-pointer whitespace-nowrap"
+                          >
+                            <Clock className="w-3 h-3" />
+                            <span>Change Timing</span>
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleEditClick(s)}
+                          className="text-violet-400 hover:text-violet-300 font-semibold text-xs inline-flex items-center justify-center gap-1 bg-violet-600/10 px-2.5 py-1.5 rounded-lg cursor-pointer"
+                        >
+                          <Edit className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteStudent(s.id)}
+                          className="text-red-400 hover:text-red-300 font-semibold text-xs inline-flex items-center justify-center gap-1 bg-red-600/10 px-2.5 py-1.5 rounded-lg cursor-pointer"
+                        >
+                          <Trash className="w-3 h-3" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -4127,6 +4212,134 @@ function StudentsView({
                   className="flex-1 bg-violet-600 hover:bg-violet-700 text-white font-semibold py-2 rounded-xl text-xs flex justify-center items-center"
                 >
                   {submitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Change Timing / Seat Booking Modal */}
+      {isChangeTimingModalOpen && changeTimingStudent && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-app-bg/70 backdrop-blur-sm" onClick={() => setIsChangeTimingModalOpen(false)}>
+          <div className="w-full max-w-sm bg-app-surface border border-app-border rounded-2xl shadow-2xl p-6 relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setIsChangeTimingModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white hover:bg-app-bg p-1 rounded-lg transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            
+            <div className="mb-4">
+              <h3 className="font-bold text-base text-white">Change Shift Timing</h3>
+              <p className="text-[10px] text-slate-400 mt-1">Shift seat/timing for {changeTimingStudent.name}</p>
+            </div>
+            
+            <form onSubmit={handleChangeTimingSubmit} className="space-y-4">
+              {/* Select Seat */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Select Seat</label>
+                <select
+                  value={changeTimingSeatId}
+                  onChange={(e) => setChangeTimingSeatId(e.target.value)}
+                  className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                >
+                  <option value="">-- Select a Seat --</option>
+                  {allSeatsList.map((st) => {
+                    const isCurrent = st.seatNumber === changeTimingStudent.activeSeat
+                    const statusText = isCurrent ? ' (Current)' : st.status === 'AVAILABLE' ? '' : ' (Occupied)'
+                    return (
+                      <option 
+                        key={st.id} 
+                        value={st.id} 
+                        disabled={st.status !== 'AVAILABLE' && !isCurrent}
+                      >
+                        {st.seatNumber} - {st.areaName}{statusText}
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+
+              {/* Select Plan */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Select Plan</label>
+                <select
+                  value={changeTimingPlanId}
+                  onChange={(e) => setChangeTimingPlanId(e.target.value)}
+                  className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                >
+                  <option value="">-- Select Plan --</option>
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} - ₹{p.price} ({p.durationDays} days)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Book All Shifts Toggle */}
+              <div className="flex items-center gap-2 pt-1">
+                <input 
+                  type="checkbox" 
+                  id="changeTimingBookAllShifts" 
+                  checked={changeTimingBookAllShifts}
+                  onChange={(e) => setChangeTimingBookAllShifts(e.target.checked)}
+                  className="w-4 h-4 rounded border-app-border bg-app-bg text-violet-600 focus:ring-violet-500 cursor-pointer"
+                />
+                <label htmlFor="changeTimingBookAllShifts" className="text-[10px] font-bold uppercase tracking-wider text-slate-300 cursor-pointer select-none">
+                  Book All Shifts (Full Day Seat)
+                </label>
+              </div>
+
+              {/* Select Shift Timing (conditional on Book All Shifts) */}
+              {!changeTimingBookAllShifts && (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Select Shift Timing</label>
+                  <select
+                    value={changeTimingShiftId}
+                    onChange={(e) => setChangeTimingShiftId(e.target.value)}
+                    className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                  >
+                    <option value="">-- Select Shift --</option>
+                    {shifts.map((sh) => (
+                      <option key={sh.id} value={sh.id}>
+                        {sh.name} ({formatTimeTo12h(sh.startTime)} - {formatTimeTo12h(sh.endTime)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Payment Mode */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Payment Mode</label>
+                <select
+                  value={changeTimingPaymentMode}
+                  onChange={(e) => setChangeTimingPaymentMode(e.target.value)}
+                  className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                >
+                  <option value="UPI">UPI / GPay / PhonePe</option>
+                  <option value="CASH">Cash Payment</option>
+                  <option value="BANK_TRANSFER">Net Banking / Card</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button 
+                  type="button" 
+                  onClick={() => setIsChangeTimingModalOpen(false)}
+                  className="flex-1 bg-app-border hover:bg-app-border/70 text-white font-semibold py-2 rounded-xl text-xs"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 bg-violet-600 hover:bg-violet-700 text-white font-semibold py-2 rounded-xl text-xs flex justify-center items-center"
+                >
+                  {submitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'Update timing'}
                 </button>
               </div>
             </form>

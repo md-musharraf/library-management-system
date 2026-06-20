@@ -254,6 +254,141 @@ router.post('/book', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error booking seat' });
     }
 });
+// Change a student's seat/timing booking (Releases old bookings and creates new ones)
+router.post('/change-booking', async (req, res) => {
+    const tenantId = req.tenantId;
+    const { studentId, seatId, planId, shiftId, paymentMode, bookAllShifts } = req.body;
+    if (!studentId || !seatId || !planId || !paymentMode) {
+        return res.status(400).json({ error: 'studentId, seatId, planId, and paymentMode are required' });
+    }
+    try {
+        // 1. Find and release all current active bookings for this student
+        const activeBookings = await models_1.Booking.find({ tenantId, studentId, status: 'ACTIVE' });
+        const oldSeatIds = new Set();
+        for (const ab of activeBookings) {
+            await models_1.Booking.findByIdAndUpdate(ab._id, { status: 'COMPLETED' });
+            if (ab.seatId) {
+                oldSeatIds.add(ab.seatId.toString());
+            }
+        }
+        // Update old seats status if they are now empty
+        for (const oldSeatId of oldSeatIds) {
+            const remainingBookings = await models_1.Booking.countDocuments({ seatId: oldSeatId, tenantId, status: 'ACTIVE' });
+            if (remainingBookings === 0) {
+                await models_1.Seat.findByIdAndUpdate(oldSeatId, { status: 'AVAILABLE' });
+            }
+        }
+        // 2. Book the new seat
+        const seat = await models_1.Seat.findOne({ _id: seatId, tenantId });
+        if (!seat) {
+            return res.status(404).json({ error: 'Seat not found' });
+        }
+        // Get target shifts
+        let targetShifts = [];
+        if (bookAllShifts) {
+            targetShifts = await models_1.Shift.find({ tenantId });
+            if (targetShifts.length === 0) {
+                return res.status(400).json({ error: 'No shifts found for this library to book.' });
+            }
+        }
+        else {
+            if (!shiftId) {
+                return res.status(400).json({ error: 'shiftId is required when not booking all shifts.' });
+            }
+            const shift = await models_1.Shift.findOne({ _id: shiftId, tenantId });
+            if (!shift) {
+                return res.status(404).json({ error: 'Shift not found' });
+            }
+            targetShifts = [shift];
+        }
+        // Check seat not already booked in target shifts
+        for (const sh of targetShifts) {
+            const activeShiftBooking = await models_1.Booking.findOne({
+                tenantId, seatId, shiftId: sh._id, status: 'ACTIVE',
+            });
+            if (activeShiftBooking) {
+                return res.status(400).json({ error: `Seat is already booked for shift timing: ${sh.name}.` });
+            }
+        }
+        const student = await models_1.Student.findOne({ _id: studentId, tenantId });
+        if (!student) {
+            return res.status(404).json({ error: 'Student not found' });
+        }
+        const plan = await models_1.Plan.findOne({ _id: planId, tenantId });
+        if (!plan) {
+            return res.status(404).json({ error: 'Plan not found' });
+        }
+        const start = new Date();
+        let end;
+        if (plan.durationDays >= 28) {
+            const months = Math.round(plan.durationDays / 30);
+            end = new Date(start);
+            const expectedDay = start.getDate();
+            end.setMonth(start.getMonth() + months);
+            if (end.getDate() !== expectedDay) {
+                end.setDate(0);
+            }
+        }
+        else {
+            end = new Date(start);
+            end.setDate(start.getDate() + plan.durationDays);
+        }
+        const bookings = [];
+        const payments = [];
+        for (const sh of targetShifts) {
+            const booking = await models_1.Booking.create({
+                _id: (0, uuid_1.v4)(),
+                tenantId,
+                studentId,
+                seatId,
+                planId,
+                startDate: start,
+                endDate: end,
+                shiftId: sh._id,
+                status: 'ACTIVE',
+            });
+            bookings.push(booking);
+            const payment = await models_1.Payment.create({
+                _id: (0, uuid_1.v4)(),
+                tenantId,
+                bookingId: booking._id,
+                amount: plan.price,
+                paymentDate: new Date(),
+                paymentMode,
+                status: 'PAID',
+            });
+            payments.push(payment);
+        }
+        await models_1.Seat.findByIdAndUpdate(seatId, { status: 'OCCUPIED' });
+        // Try sending booking WhatsApp notification
+        try {
+            const config = await models_1.WhatsappConfig.findOne({ tenantId });
+            const tenant = await models_1.Tenant.findById(tenantId);
+            if (config && config.apiUrl && config.token) {
+                const shiftInfoStr = bookAllShifts
+                    ? 'All Shifts (Full Seat)'
+                    : `the ${targetShifts[0].name} shift (${(0, time_1.formatTimeTo12h)(targetShifts[0].startTime)}-${(0, time_1.formatTimeTo12h)(targetShifts[0].endTime)})`;
+                const msg = `Hello ${student.name}, your seat ${seat.seatNumber} timings have been updated at ${tenant?.name} for ${shiftInfoStr}. Valid until ${end.toLocaleDateString()}. Thank you!`;
+                console.log(`[WHATSAPP AUTOMATION] Sending timing change message: ${msg}`);
+                await models_1.MessageLog.create({
+                    _id: (0, uuid_1.v4)(),
+                    tenantId,
+                    recipient: student.phone,
+                    message: msg,
+                    status: 'SENT',
+                });
+            }
+        }
+        catch (wsErr) {
+            console.error('Failed to trigger change timing WhatsApp message:', wsErr);
+        }
+        return res.status(200).json({ message: 'Seat booking timings updated successfully', bookings, payments });
+    }
+    catch (error) {
+        console.error('Change booking error:', error);
+        return res.status(500).json({ error: 'Internal server error changing seat booking' });
+    }
+});
 // Release a seat booking
 router.post('/release', async (req, res) => {
     const tenantId = req.tenantId;

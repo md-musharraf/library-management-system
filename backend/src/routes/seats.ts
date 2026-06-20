@@ -283,6 +283,154 @@ router.post('/book', async (req: Request, res: Response) => {
   }
 })
 
+// Change a student's seat/timing booking (Releases old bookings and creates new ones)
+router.post('/change-booking', async (req: Request, res: Response) => {
+  const tenantId = req.tenantId!
+  const { studentId, seatId, planId, shiftId, paymentMode, bookAllShifts } = req.body
+
+  if (!studentId || !seatId || !planId || !paymentMode) {
+    return res.status(400).json({ error: 'studentId, seatId, planId, and paymentMode are required' })
+  }
+
+  try {
+    // 1. Find and release all current active bookings for this student
+    const activeBookings = await Booking.find({ tenantId, studentId, status: 'ACTIVE' })
+    const oldSeatIds = new Set<string>()
+    for (const ab of activeBookings) {
+      await Booking.findByIdAndUpdate(ab._id, { status: 'COMPLETED' })
+      if (ab.seatId) {
+        oldSeatIds.add(ab.seatId.toString())
+      }
+    }
+
+    // Update old seats status if they are now empty
+    for (const oldSeatId of oldSeatIds) {
+      const remainingBookings = await Booking.countDocuments({ seatId: oldSeatId, tenantId, status: 'ACTIVE' })
+      if (remainingBookings === 0) {
+        await Seat.findByIdAndUpdate(oldSeatId, { status: 'AVAILABLE' })
+      }
+    }
+
+    // 2. Book the new seat
+    const seat = await Seat.findOne({ _id: seatId, tenantId })
+    if (!seat) {
+      return res.status(404).json({ error: 'Seat not found' })
+    }
+
+    // Get target shifts
+    let targetShifts: any[] = []
+    if (bookAllShifts) {
+      targetShifts = await Shift.find({ tenantId })
+      if (targetShifts.length === 0) {
+        return res.status(400).json({ error: 'No shifts found for this library to book.' })
+      }
+    } else {
+      if (!shiftId) {
+        return res.status(400).json({ error: 'shiftId is required when not booking all shifts.' })
+      }
+      const shift = await Shift.findOne({ _id: shiftId, tenantId })
+      if (!shift) {
+        return res.status(404).json({ error: 'Shift not found' })
+      }
+      targetShifts = [shift]
+    }
+
+    // Check seat not already booked in target shifts
+    for (const sh of targetShifts) {
+      const activeShiftBooking = await Booking.findOne({
+        tenantId, seatId, shiftId: sh._id, status: 'ACTIVE',
+      })
+      if (activeShiftBooking) {
+        return res.status(400).json({ error: `Seat is already booked for shift timing: ${sh.name}.` })
+      }
+    }
+
+    const student = await Student.findOne({ _id: studentId, tenantId })
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' })
+    }
+
+    const plan = await Plan.findOne({ _id: planId, tenantId }) as any
+    if (!plan) {
+      return res.status(404).json({ error: 'Plan not found' })
+    }
+
+    const start = new Date()
+    let end: Date
+    if (plan.durationDays >= 28) {
+      const months = Math.round(plan.durationDays / 30)
+      end = new Date(start)
+      const expectedDay = start.getDate()
+      end.setMonth(start.getMonth() + months)
+      if (end.getDate() !== expectedDay) {
+        end.setDate(0)
+      }
+    } else {
+      end = new Date(start)
+      end.setDate(start.getDate() + plan.durationDays)
+    }
+
+    const bookings: any[] = []
+    const payments: any[] = []
+
+    for (const sh of targetShifts) {
+      const booking = await Booking.create({
+        _id: uuidv4(),
+        tenantId,
+        studentId,
+        seatId,
+        planId,
+        startDate: start,
+        endDate: end,
+        shiftId: (sh as any)._id,
+        status: 'ACTIVE',
+      }) as any
+      bookings.push(booking)
+
+      const payment = await Payment.create({
+        _id: uuidv4(),
+        tenantId,
+        bookingId: booking._id,
+        amount: plan.price,
+        paymentDate: new Date(),
+        paymentMode,
+        status: 'PAID',
+      }) as any
+      payments.push(payment)
+    }
+
+    await Seat.findByIdAndUpdate(seatId, { status: 'OCCUPIED' })
+
+    // Try sending booking WhatsApp notification
+    try {
+      const config = await WhatsappConfig.findOne({ tenantId })
+      const tenant = await Tenant.findById(tenantId)
+      if (config && config.apiUrl && config.token) {
+        const shiftInfoStr = bookAllShifts
+          ? 'All Shifts (Full Seat)'
+          : `the ${targetShifts[0].name} shift (${formatTimeTo12h(targetShifts[0].startTime)}-${formatTimeTo12h(targetShifts[0].endTime)})`
+
+        const msg = `Hello ${(student as any).name}, your seat ${(seat as any).seatNumber} timings have been updated at ${(tenant as any)?.name} for ${shiftInfoStr}. Valid until ${end.toLocaleDateString()}. Thank you!`
+        console.log(`[WHATSAPP AUTOMATION] Sending timing change message: ${msg}`)
+        await MessageLog.create({
+          _id: uuidv4(),
+          tenantId,
+          recipient: (student as any).phone as string,
+          message: msg,
+          status: 'SENT',
+        })
+      }
+    } catch (wsErr) {
+      console.error('Failed to trigger change timing WhatsApp message:', wsErr)
+    }
+
+    return res.status(200).json({ message: 'Seat booking timings updated successfully', bookings, payments })
+  } catch (error) {
+    console.error('Change booking error:', error)
+    return res.status(500).json({ error: 'Internal server error changing seat booking' })
+  }
+})
+
 // Release a seat booking
 router.post('/release', async (req: Request, res: Response) => {
   const tenantId = req.tenantId!
