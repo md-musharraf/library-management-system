@@ -785,7 +785,7 @@ export default function App() {
           </main>
 
           {/* Mobile Bottom Navigation Bar */}
-          <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-app-surface border-t border-app-border px-6 py-2 flex justify-between items-center shadow-2xl backdrop-blur-lg">
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-app-surface border-t border-app-border px-1.5 py-1.5 flex justify-around items-center shadow-2xl backdrop-blur-lg">
             <BottomNavItem 
               icon={<LayoutDashboard className="w-5.5 h-5.5" />} label="Home" 
               active={currentTab === 'dashboard'} onClick={() => setCurrentTab('dashboard')} 
@@ -1005,12 +1005,12 @@ function BottomNavItem({ icon, label, active, onClick }: { icon: React.ReactNode
   return (
     <button 
       onClick={onClick}
-      className="flex flex-col items-center gap-1 flex-1 py-1"
+      className="flex flex-col items-center gap-0.5 flex-1 py-1 min-w-0"
     >
       <div className={`p-1 rounded-xl transition-all ${active ? 'text-violet-400' : 'text-slate-400'}`}>
         {icon}
       </div>
-      <span className={`text-[9px] font-bold uppercase tracking-wider ${active ? 'text-violet-400' : 'text-slate-500'}`}>
+      <span className={`text-[8px] sm:text-[9px] font-semibold truncate w-full text-center ${active ? 'text-violet-400' : 'text-slate-500'}`}>
         {label}
       </span>
     </button>
@@ -2305,7 +2305,7 @@ function AttendanceView({
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full min-w-[700px] text-left border-collapse">
                   <thead>
                     <tr className="border-b border-app-border bg-slate-900/30 text-xs font-black uppercase text-slate-400 tracking-wider">
                       <th className="px-6 py-4">Student</th>
@@ -2451,7 +2451,7 @@ function AttendanceView({
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full min-w-[650px] text-left border-collapse">
                     <thead>
                       <tr className="border-b border-app-border bg-slate-900/30 text-xs font-black uppercase text-slate-400 tracking-wider">
                         <th className="px-6 py-4">Date</th>
@@ -2874,7 +2874,7 @@ function AnalyticsViewPanel({ data, onSendOutreach }: AnalyticsViewPanelProps) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[750px] text-left border-collapse">
               <thead>
                 <tr className="border-b border-app-border/60 bg-slate-900/40 text-[10px] uppercase tracking-wider text-slate-400 font-black">
                   <th className="px-6 py-4">Student</th>
@@ -3401,7 +3401,7 @@ function ExpensesView({ showToast }: { showToast: (msg: string, type?: 'success'
             </select>
           </div>
 
-          <div className="flex-1 overflow-y-auto max-h-[350px]">
+          <div className="flex-1 overflow-auto max-h-[350px]">
             {loading ? (
               <div className="p-12 flex justify-center"><RefreshCw className="w-6 h-6 text-violet-500 animate-spin" /></div>
             ) : filteredExpenses.length === 0 ? (
@@ -3410,7 +3410,7 @@ function ExpensesView({ showToast }: { showToast: (msg: string, type?: 'success'
                 <span>No expense entries recorded.</span>
               </div>
             ) : (
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full min-w-[500px] text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-app-border bg-app-surface/30 text-slate-400 font-medium">
                     <th className="px-5 py-3">Expense Details</th>
@@ -3761,7 +3761,7 @@ function StudentsView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full min-w-[650px] text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-app-border bg-app-surface/65 text-slate-400 font-medium">
                   <th className="px-5 py-4">Reg Code / Name</th>
@@ -6349,7 +6349,7 @@ function AdminDashboardView({ adminToken, setAdminToken, showToast, theme, setTh
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full min-w-[800px] text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-app-border text-slate-400 uppercase tracking-wider font-semibold text-[10px]">
                     <th className="py-3 px-4">Library Name</th>
