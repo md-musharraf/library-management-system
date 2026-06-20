@@ -5,11 +5,18 @@ const uuid_1 = require("uuid");
 const models_1 = require("../models");
 const time_1 = require("../utils/time");
 const router = (0, express_1.Router)();
+// Helper to update seat status dynamically (occupied only if booked for all shifts)
+const updateSeatStatus = async (tenantId, seatId) => {
+    const totalShifts = await models_1.Shift.countDocuments({ tenantId });
+    const activeBookingsCount = await models_1.Booking.countDocuments({ tenantId, seatId, status: 'ACTIVE' });
+    const status = totalShifts > 0 && activeBookingsCount >= totalShifts ? 'OCCUPIED' : 'AVAILABLE';
+    await models_1.Seat.findByIdAndUpdate(seatId, { status });
+};
 // Get all seats with their active bookings across all shifts
 router.get('/', async (req, res) => {
     const tenantId = req.tenantId;
     try {
-        const seats = await models_1.Seat.find({ tenantId }).sort({ seatNumber: 1 });
+        const seats = await models_1.Seat.find({ tenantId });
         // Bulk fetch all active bookings populated with student/plan/shift to avoid N+1 query
         const allActiveBookings = await models_1.Booking.find({ tenantId, status: 'ACTIVE' })
             .populate('student')
@@ -26,7 +33,19 @@ router.get('/', async (req, res) => {
                 bookingsBySeatMap[sId].push(b);
             }
         });
-        const formatted = seats.map((s) => {
+        // Natural sort seats in JS
+        const getSeatNum = (numStr) => {
+            const match = numStr.match(/\d+/);
+            return match ? parseInt(match[0], 10) : 0;
+        };
+        const sortedSeats = [...seats].sort((a, b) => {
+            const aPrefix = a.seatNumber.replace(/\d+/g, '');
+            const bPrefix = b.seatNumber.replace(/\d+/g, '');
+            if (aPrefix !== bPrefix)
+                return aPrefix.localeCompare(bPrefix);
+            return getSeatNum(a.seatNumber) - getSeatNum(b.seatNumber);
+        });
+        const formatted = sortedSeats.map((s) => {
             const bookings = bookingsBySeatMap[s._id.toString()] || [];
             const activeBookings = bookings.map((b) => ({
                 id: b._id,
@@ -223,8 +242,8 @@ router.post('/book', async (req, res) => {
             });
             payments.push(payment);
         }
-        // 8. Mark seat occupied
-        await models_1.Seat.findByIdAndUpdate(seatId, { status: 'OCCUPIED' });
+        // 8. Update seat status dynamically (OCCUPIED only if fully booked for all shifts)
+        await updateSeatStatus(tenantId, seatId);
         // Try sending booking WhatsApp
         try {
             const config = await models_1.WhatsappConfig.findOne({ tenantId });
@@ -271,12 +290,9 @@ router.post('/change-booking', async (req, res) => {
                 oldSeatIds.add(ab.seatId.toString());
             }
         }
-        // Update old seats status if they are now empty
+        // Update old seats status dynamically
         for (const oldSeatId of oldSeatIds) {
-            const remainingBookings = await models_1.Booking.countDocuments({ seatId: oldSeatId, tenantId, status: 'ACTIVE' });
-            if (remainingBookings === 0) {
-                await models_1.Seat.findByIdAndUpdate(oldSeatId, { status: 'AVAILABLE' });
-            }
+            await updateSeatStatus(tenantId, oldSeatId);
         }
         // 2. Book the new seat
         const seat = await models_1.Seat.findOne({ _id: seatId, tenantId });
@@ -359,7 +375,8 @@ router.post('/change-booking', async (req, res) => {
             });
             payments.push(payment);
         }
-        await models_1.Seat.findByIdAndUpdate(seatId, { status: 'OCCUPIED' });
+        // Update new seat status dynamically
+        await updateSeatStatus(tenantId, seatId);
         // Try sending booking WhatsApp notification
         try {
             const config = await models_1.WhatsappConfig.findOne({ tenantId });
@@ -409,11 +426,8 @@ router.post('/release', async (req, res) => {
         }
         const targetSeatId = activeBooking.seatId;
         await models_1.Booking.findByIdAndUpdate(activeBooking._id, { status: 'COMPLETED' });
-        // Check if any other bookings remain on this seat
-        const remainingBookings = await models_1.Booking.countDocuments({ seatId: targetSeatId, tenantId, status: 'ACTIVE' });
-        if (remainingBookings === 0) {
-            await models_1.Seat.findByIdAndUpdate(targetSeatId, { status: 'AVAILABLE' });
-        }
+        // Update seat status dynamically
+        await updateSeatStatus(tenantId, targetSeatId);
         return res.json({ message: 'Seat booking released successfully' });
     }
     catch (error) {

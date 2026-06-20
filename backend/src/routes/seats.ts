@@ -5,12 +5,20 @@ import { formatTimeTo12h } from '../utils/time'
 
 const router = Router()
 
+// Helper to update seat status dynamically (occupied only if booked for all shifts)
+const updateSeatStatus = async (tenantId: string, seatId: string) => {
+  const totalShifts = await Shift.countDocuments({ tenantId })
+  const activeBookingsCount = await Booking.countDocuments({ tenantId, seatId, status: 'ACTIVE' })
+  const status = totalShifts > 0 && activeBookingsCount >= totalShifts ? 'OCCUPIED' : 'AVAILABLE'
+  await Seat.findByIdAndUpdate(seatId, { status })
+}
+
 // Get all seats with their active bookings across all shifts
 router.get('/', async (req: Request, res: Response) => {
   const tenantId = req.tenantId!
 
   try {
-    const seats = await Seat.find({ tenantId }).sort({ seatNumber: 1 })
+    const seats = await Seat.find({ tenantId })
 
     // Bulk fetch all active bookings populated with student/plan/shift to avoid N+1 query
     const allActiveBookings = await Booking.find({ tenantId, status: 'ACTIVE' })
@@ -30,7 +38,19 @@ router.get('/', async (req: Request, res: Response) => {
       }
     })
 
-    const formatted = seats.map((s) => {
+    // Natural sort seats in JS
+    const getSeatNum = (numStr: string) => {
+      const match = numStr.match(/\d+/)
+      return match ? parseInt(match[0], 10) : 0
+    }
+    const sortedSeats = [...seats].sort((a: any, b: any) => {
+      const aPrefix = a.seatNumber.replace(/\d+/g, '')
+      const bPrefix = b.seatNumber.replace(/\d+/g, '')
+      if (aPrefix !== bPrefix) return aPrefix.localeCompare(bPrefix)
+      return getSeatNum(a.seatNumber) - getSeatNum(b.seatNumber)
+    })
+
+    const formatted = sortedSeats.map((s) => {
       const bookings = bookingsBySeatMap[s._id.toString()] || []
       const activeBookings = bookings.map((b: any) => ({
         id: b._id,
@@ -250,8 +270,8 @@ router.post('/book', async (req: Request, res: Response) => {
       payments.push(payment)
     }
 
-    // 8. Mark seat occupied
-    await Seat.findByIdAndUpdate(seatId, { status: 'OCCUPIED' })
+    // 8. Update seat status dynamically (OCCUPIED only if fully booked for all shifts)
+    await updateSeatStatus(tenantId, seatId)
 
     // Try sending booking WhatsApp
     try {
@@ -303,12 +323,9 @@ router.post('/change-booking', async (req: Request, res: Response) => {
       }
     }
 
-    // Update old seats status if they are now empty
+    // Update old seats status dynamically
     for (const oldSeatId of oldSeatIds) {
-      const remainingBookings = await Booking.countDocuments({ seatId: oldSeatId, tenantId, status: 'ACTIVE' })
-      if (remainingBookings === 0) {
-        await Seat.findByIdAndUpdate(oldSeatId, { status: 'AVAILABLE' })
-      }
+      await updateSeatStatus(tenantId, oldSeatId)
     }
 
     // 2. Book the new seat
@@ -399,7 +416,8 @@ router.post('/change-booking', async (req: Request, res: Response) => {
       payments.push(payment)
     }
 
-    await Seat.findByIdAndUpdate(seatId, { status: 'OCCUPIED' })
+    // Update new seat status dynamically
+    await updateSeatStatus(tenantId, seatId)
 
     // Try sending booking WhatsApp notification
     try {
@@ -457,12 +475,8 @@ router.post('/release', async (req: Request, res: Response) => {
 
     await Booking.findByIdAndUpdate(activeBooking._id, { status: 'COMPLETED' })
 
-    // Check if any other bookings remain on this seat
-    const remainingBookings = await Booking.countDocuments({ seatId: targetSeatId, tenantId, status: 'ACTIVE' })
-
-    if (remainingBookings === 0) {
-      await Seat.findByIdAndUpdate(targetSeatId, { status: 'AVAILABLE' })
-    }
+    // Update seat status dynamically
+    await updateSeatStatus(tenantId, targetSeatId)
 
     return res.json({ message: 'Seat booking released successfully' })
   } catch (error) {

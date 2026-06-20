@@ -3510,6 +3510,7 @@ function StudentsView({
   const [filterTab, setFilterTab] = useState<'all' | 'pending'>('all')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [allSeatsForAdd, setAllSeatsForAdd] = useState<Seat[]>([])
 
   const displayedStudents = students.filter(s => {
     if (filterTab === 'pending') {
@@ -3552,7 +3553,6 @@ function StudentsView({
   const [assignShiftId, setAssignShiftId] = useState('')
   const [assignPaymentMode, setAssignPaymentMode] = useState('UPI')
   const [bookAllShifts, setBookAllShifts] = useState(false)
-  const [availableSeats, setAvailableSeats] = useState<Seat[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
 
@@ -3639,7 +3639,20 @@ function StudentsView({
       ])
       setPlans(pData)
       setShifts(shData)
-      setAvailableSeats(sData.filter((s: Seat) => s.status === 'AVAILABLE'))
+      
+      // Natural sort seats in client side
+      const getSeatNum = (numStr: string) => {
+        const match = numStr.match(/\d+/)
+        return match ? parseInt(match[0], 10) : 0
+      }
+      const sortedSeats = [...sData].sort((a: any, b: any) => {
+        const aPrefix = a.seatNumber.replace(/\d+/g, '')
+        const bPrefix = b.seatNumber.replace(/\d+/g, '')
+        if (aPrefix !== bPrefix) return aPrefix.localeCompare(bPrefix)
+        return getSeatNum(a.seatNumber) - getSeatNum(b.seatNumber)
+      })
+
+      setAllSeatsForAdd(sortedSeats)
       
       if (shData.length > 0 && !assignShiftId) {
         setAssignShiftId(shData[0].id)
@@ -3698,7 +3711,7 @@ function StudentsView({
 
       if (student.welcomeMessage && student.welcomeMessage.shouldSendManual) {
         const { phone, message } = student.welcomeMessage
-        const assignedSeat = availableSeats.find(s => s.id === assignSeatId)
+        const assignedSeat = allSeatsForAdd.find(s => s.id === assignSeatId)
         const assignedPlan = plans.find(p => p.id === assignPlanId)
         const assignedShift = shifts.find(s => s.id === assignShiftId)
 
@@ -4041,9 +4054,31 @@ function StudentsView({
                       className="w-full bg-app-bg border border-app-border rounded-xl px-2 py-2 text-[11px] text-white focus:outline-none focus:border-violet-500"
                     >
                       <option value="">-- No Seat --</option>
-                      {availableSeats.map((se) => (
-                        <option key={se.id} value={se.id}>{se.seatNumber} ({se.areaName.slice(0, 10)})</option>
-                      ))}
+                      {allSeatsForAdd.map((se) => {
+                        const totalShiftsCount = shifts.length
+                        const bookedShiftsCount = se.bookings.length
+                        const isFullyBooked = totalShiftsCount > 0 && bookedShiftsCount >= totalShiftsCount
+
+                        if (isFullyBooked) return null
+
+                        const isCurrentShiftBooked = bookAllShifts
+                          ? se.bookings.length > 0
+                          : se.bookings.some(b => b.shiftId === assignShiftId)
+
+                        const bookedShiftIds = se.bookings.map((b: any) => b.shiftId)
+                        const vacantShifts = shifts.filter(sh => !bookedShiftIds.includes(sh.id))
+                        const vacantShiftsStr = vacantShifts.map(sh => sh.name).join(', ')
+
+                        return (
+                          <option 
+                            key={se.id} 
+                            value={se.id}
+                            disabled={isCurrentShiftBooked}
+                          >
+                            {se.seatNumber} ({se.areaName.slice(0, 10)}) - Vacant: {vacantShiftsStr || 'None'}{isCurrentShiftBooked ? ' (Timing Booked)' : ''}
+                          </option>
+                        )
+                      })}
                     </select>
                   </div>
                 </div>
@@ -4247,15 +4282,33 @@ function StudentsView({
                 >
                   <option value="">-- Select a Seat --</option>
                   {allSeatsList.map((st) => {
-                    const isCurrent = st.seatNumber === changeTimingStudent.activeSeat
-                    const statusText = isCurrent ? ' (Current)' : st.status === 'AVAILABLE' ? '' : ' (Occupied)'
+                    const isCurrentSeat = st.seatNumber === changeTimingStudent.activeSeat
+                    const bookingsByOthers = st.bookings.filter((b: any) => b.studentId !== changeTimingStudent.id)
+                    const totalShiftsCount = shifts.length
+                    const isFullyBookedByOthers = totalShiftsCount > 0 && bookingsByOthers.length >= totalShiftsCount
+
+                    if (isFullyBookedByOthers) return null
+
+                    const isOccupiedForTargetTiming = changeTimingBookAllShifts
+                      ? bookingsByOthers.length > 0
+                      : bookingsByOthers.some(b => b.shiftId === changeTimingShiftId)
+
+                    const bookedByOthersShiftIds = bookingsByOthers.map((b: any) => b.shiftId)
+                    const vacantShifts = shifts.filter(sh => !bookedByOthersShiftIds.includes(sh.id))
+                    const vacantShiftsStr = vacantShifts.map(sh => sh.name).join(', ')
+
+                    let statusText = isCurrentSeat ? ' (Current)' : ''
+                    if (isOccupiedForTargetTiming) {
+                      statusText += ' (Timing Booked)'
+                    }
+
                     return (
                       <option 
                         key={st.id} 
                         value={st.id} 
-                        disabled={st.status !== 'AVAILABLE' && !isCurrent}
+                        disabled={isOccupiedForTargetTiming}
                       >
-                        {st.seatNumber} - {st.areaName}{statusText}
+                        {st.seatNumber} ({st.areaName.slice(0, 10)}) - Vacant: {vacantShiftsStr || 'None'}{statusText}
                       </option>
                     )
                   })}
@@ -4389,7 +4442,20 @@ function SeatsView({ showToast }: { showToast: (msg: string, type?: 'success' | 
         loadCachedPlans(bypassCache),
         loadCachedShifts(bypassCache)
       ])
-      setSeats(sData)
+
+      // Natural sort seats in client side
+      const getSeatNum = (numStr: string) => {
+        const match = numStr.match(/\d+/)
+        return match ? parseInt(match[0], 10) : 0
+      }
+      const sortedSeats = [...sData].sort((a: any, b: any) => {
+        const aPrefix = a.seatNumber.replace(/\d+/g, '')
+        const bPrefix = b.seatNumber.replace(/\d+/g, '')
+        if (aPrefix !== bPrefix) return aPrefix.localeCompare(bPrefix)
+        return getSeatNum(a.seatNumber) - getSeatNum(b.seatNumber)
+      })
+
+      setSeats(sortedSeats)
       setStudents(stData.filter((st: Student) => !st.activeSeat))
       setPlans(pData)
       setShifts(shData)
@@ -4541,7 +4607,7 @@ function SeatsView({ showToast }: { showToast: (msg: string, type?: 'success' | 
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-3 bg-rose-500 rounded-md"></span>
-                  <span className="text-slate-300">Occupied (Any Shift)</span>
+                  <span className="text-slate-300">Occupied (Active Shift)</span>
                 </div>
               </div>
             </div>
@@ -4549,7 +4615,7 @@ function SeatsView({ showToast }: { showToast: (msg: string, type?: 'success' | 
             <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-3">
               {seats.map((seat) => {
                 // Find if there is an active booking on this seat for the active shift
-                const isOccupied = seat.bookings.length > 0
+                const isOccupied = seat.bookings.some(b => b.shiftId === activeShiftId)
                 return (
                   <button
                     key={seat.id}
@@ -4718,9 +4784,18 @@ function SeatsView({ showToast }: { showToast: (msg: string, type?: 'success' | 
                       onChange={(e) => setShiftId(e.target.value)}
                       className="w-full bg-app-bg border border-app-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                     >
-                      {shifts.map((sh) => (
-                        <option key={sh.id} value={sh.id}>{sh.name} ({formatTimeTo12h(sh.startTime)}-{formatTimeTo12h(sh.endTime)})</option>
-                      ))}
+                      {shifts.map((sh) => {
+                        const isReserved = selectedSeat.bookings.some(b => b.shiftId === sh.id)
+                        return (
+                          <option 
+                            key={sh.id} 
+                            value={sh.id}
+                            disabled={isReserved}
+                          >
+                            {sh.name} ({formatTimeTo12h(sh.startTime)} - {formatTimeTo12h(sh.endTime)}){isReserved ? ' (Booked)' : ''}
+                          </option>
+                        )
+                      })}
                     </select>
                   </div>
                 ) : (
