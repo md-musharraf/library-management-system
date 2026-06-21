@@ -4711,7 +4711,7 @@ function StudentDetailsModal({ student, onClose, showToast }: StudentDetailsModa
                     </div>
 
                     <div className="grid grid-cols-7 gap-1.5">
-                      {calendarDays.map((cell: any, idx: number) => {
+                      {calendarDays.map((cell: any) => {
                         if (cell.pad) {
                           return <div key={cell.key} className="h-10 sm:h-12 bg-transparent"></div>
                         }
@@ -4774,9 +4774,7 @@ function StudentDetailsModal({ student, onClose, showToast }: StudentDetailsModa
     </div>
   )
 }
-    </div>
-  )
-}
+
 
 // ==========================================
 // VIEW 3: Seat Management View Component

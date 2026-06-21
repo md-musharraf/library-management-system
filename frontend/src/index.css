@@ -33,7 +33,15 @@
   --color-violet-700: var(--primary-700);
   --color-violet-800: var(--primary-800);
   --color-violet-900: var(--primary-900);
-  --color-violet-950: var(--primary-955);
+  --color-violet-955: var(--primary-955);
+
+  /* Map standard tailwind shadows to theme-responsive shadows */
+  --shadow-sm: var(--app-shadow-sm);
+  --shadow-md: var(--app-shadow-md);
+  --shadow-lg: var(--app-shadow-lg);
+  --shadow-xl: var(--app-shadow-xl);
+  --shadow-2xl: var(--app-shadow-2xl);
+  --shadow-inner: var(--app-shadow-inner);
 }
 
 :root {
@@ -61,20 +69,49 @@
   --app-slate-800: #f4ebd9; /* Soft cream hover */
   --app-slate-900: #ebdcc5;
 
+  /* Shadow Variables for Light Mode */
+  --app-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --app-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.07);
+  --app-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.08);
+  --app-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --app-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+  --app-shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+
   background-color: var(--app-bg);
   color: var(--app-text);
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 :root.dark {
-  /* DARK THEME (Autumn Forest Night) */
-  --app-bg: #150d0a;       /* Deep warm dark brown */
-  --app-surface: #1e130f;  /* Deep chocolate surface */
-  --app-border: #362118;   /* Warm dark brown border */
-  --app-text: #E6CBA8;     /* Soft warm cream text */
-  --app-text-muted: #a68d77; /* Warm muted brown */
-  --app-slate-800: #2c1b15;  /* Deep hover state */
-  --app-slate-900: #1c110c;
+  /* DARK THEME (Next.js / Vercel style) */
+  --app-bg: #000000;         /* Pure Black */
+  --app-surface: #0a0a0a;    /* Very Dark Charcoal */
+  --app-border: #222222;     /* Sleek dark border */
+  --app-text: #fafafa;       /* Crisp near-white text */
+  --app-text-muted: #888888; /* Sleek medium gray text */
+  --app-slate-800: #161616;  /* Soft grey hover state */
+  --app-slate-900: #222222;  /* Active/pressed state */
+
+  /* Override primary colors in dark mode to map to a futuristic Next.js style neon violet/indigo accent */
+  --primary-50: #f5f3ff;
+  --primary-100: #ede9fe;
+  --primary-200: #ddd6fe;
+  --primary-300: #c084fc;
+  --primary-400: #a78bfa;
+  --primary-500: #6366f1;   /* Indigo-500 */
+  --primary-600: #4f46e5;   /* Indigo-600 */
+  --primary-700: #4338ca;   /* Indigo-700 */
+  --primary-800: #3730a3;
+  --primary-900: #312e81;
+  --primary-955: #1e1b4b;
+
+  /* Shadow Variables for Dark Mode: subtle translucent white border glow + deep drop shadow */
+  --app-shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --app-shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 4px 12px rgba(0, 0, 0, 0.5);
+  --app-shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.6);
+  --app-shadow-xl: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 12px 30px rgba(0, 0, 0, 0.7);
+  --app-shadow-2xl: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 20px 40px rgba(0, 0, 0, 0.8);
+  --app-shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.6);
 }
 
 body {
