@@ -30,7 +30,8 @@ import {
   LogIn,
   UserCheck,
   DollarSign,
-  TrendingDown
+  TrendingDown,
+  Eye
 } from 'lucide-react'
 
 import {
@@ -3510,6 +3511,13 @@ function StudentsView({
   const [filterTab, setFilterTab] = useState<'all' | 'pending'>('all')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
+  const [detailsStudent, setDetailsStudent] = useState<Student | null>(null)
+
+  const handleDetailsClick = (student: Student) => {
+    setDetailsStudent(student)
+    setIsDetailsModalOpen(true)
+  }
   const [allSeatsForAdd, setAllSeatsForAdd] = useState<Seat[]>([])
 
   const displayedStudents = students.filter(s => {
@@ -3919,6 +3927,13 @@ function StudentsView({
                     </td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex flex-col sm:flex-row gap-2 justify-end items-stretch sm:items-center w-full min-w-[200px] sm:min-w-0">
+                        <button 
+                          onClick={() => handleDetailsClick(s)}
+                          className="text-emerald-400 hover:text-emerald-300 font-semibold text-xs inline-flex items-center justify-center gap-1 bg-emerald-600/10 px-2.5 py-1.5 rounded-lg cursor-pointer"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>Details</span>
+                        </button>
                         {s.hasActiveBooking && (
                           <button 
                             onClick={() => handleOpenChangeTimingModal(s)}
@@ -4399,6 +4414,366 @@ function StudentsView({
           </div>
         </div>
       )}
+
+      {/* Student Details Modal */}
+      {isDetailsModalOpen && detailsStudent && (
+        <StudentDetailsModal
+          student={detailsStudent}
+          onClose={() => {
+            setIsDetailsModalOpen(false)
+            setDetailsStudent(null)
+          }}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  )
+}
+
+// ==========================================
+// STUDENT DETAILS & MONTHLY CALENDAR MODAL
+// ==========================================
+interface StudentDetailsModalProps {
+  student: Student
+  onClose: () => void
+  showToast: (msg: string, type?: 'success' | 'error') => void
+}
+
+function StudentDetailsModal({ student, onClose, showToast }: StudentDetailsModalProps) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'attendance'>('overview')
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    return new Date().toISOString().slice(0, 7) // "YYYY-MM"
+  })
+  const [attendanceData, setAttendanceData] = useState<any>(null)
+  const [loadingAttendance, setLoadingAttendance] = useState(false)
+  const [studentDetails, setStudentDetails] = useState<any>(null)
+  const [loadingDetails, setLoadingDetails] = useState(true)
+
+  const loadStudentDetails = async () => {
+    setLoadingDetails(true)
+    try {
+      const data = await api.get(`/students/${student.id}`)
+      setStudentDetails(data)
+    } catch (err: any) {
+      showToast(err.message || 'Error loading student details', 'error')
+    } finally {
+      setLoadingDetails(false)
+    }
+  }
+
+  const loadAttendance = async () => {
+    setLoadingAttendance(true)
+    try {
+      const data = await api.get(`/attendance/student/${student.id}/monthly?month=${selectedMonth}`)
+      setAttendanceData(data)
+    } catch (err: any) {
+      showToast(err.message || 'Error loading attendance', 'error')
+    } finally {
+      setLoadingAttendance(false)
+    }
+  }
+
+  useEffect(() => {
+    loadStudentDetails()
+  }, [student.id])
+
+  useEffect(() => {
+    if (activeTab === 'attendance') {
+      loadAttendance()
+    }
+  }, [student.id, activeTab, selectedMonth])
+
+  // Calendar rendering helpers
+  const getCalendarDays = () => {
+    if (!attendanceData) return []
+    const [year, month] = selectedMonth.split('-').map(Number)
+    const firstDayIndex = new Date(year, month - 1, 1).getDay() // 0 = Sun, 1 = Mon ...
+    
+    const days = []
+    // Pad previous month's empty days
+    for (let i = 0; i < firstDayIndex; i++) {
+      days.push({ pad: true, key: `pad-${i}` })
+    }
+    
+    // Add current month days
+    attendanceData.days.forEach((day: any) => {
+      days.push({ ...day, key: `day-${day.day}` })
+    })
+    
+    return days
+  }
+
+  const calendarDays = getCalendarDays()
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-2xl bg-app-bg border border-app-border rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto flex flex-col text-left" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800/40 rounded-full p-1.5 transition-colors cursor-pointer"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Modal Header */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="p-3 bg-violet-600/20 border border-violet-500/30 text-violet-400 rounded-2xl">
+            <Users className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-lg font-extrabold text-white">{student.name}</h3>
+            <p className="text-xs text-slate-400 font-mono">Reg No: {student.registrationNo}</p>
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-app-border mb-6">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-5 py-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activeTab === 'overview'
+                ? 'border-violet-500 text-white'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Overview & Bookings
+          </button>
+          <button
+            onClick={() => setActiveTab('attendance')}
+            className={`px-5 py-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activeTab === 'attendance'
+                ? 'border-violet-500 text-white'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Attendance Calendar
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        <div className="flex-1">
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              {loadingDetails ? (
+                <div className="py-12 flex justify-center">
+                  <RefreshCw className="w-6 h-6 text-violet-500 animate-spin" />
+                </div>
+              ) : !studentDetails ? (
+                <div className="text-slate-400 text-xs italic text-center py-6">Failed to load student details.</div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Basic Profile Details Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-app-surface/20 border border-app-border/40 p-4 rounded-xl">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase block">Phone Number</span>
+                      <span className="text-xs text-white font-medium">{studentDetails.phone || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase block">Email Address</span>
+                      <span className="text-xs text-white font-medium">{studentDetails.email || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase block">Aadhar Number</span>
+                      <span className="text-xs text-white font-mono">{studentDetails.aadharNo ? `••••-••••-${studentDetails.aadharNo.slice(-4)}` : 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase block">Registration Date</span>
+                      <span className="text-xs text-white font-medium">{new Date(studentDetails.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+
+                  {/* Booking & Payments History */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black uppercase text-violet-400 tracking-wider">Booking & Fees History</h4>
+                    {studentDetails.bookings?.length === 0 ? (
+                      <div className="text-slate-500 text-xs italic py-4">No membership bookings found for this student.</div>
+                    ) : (
+                      <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                        {studentDetails.bookings.map((booking: any) => {
+                          const paid = booking.payments?.filter((p: any) => p.status === 'PAID').reduce((sum: number, p: any) => sum + p.amount, 0) || 0
+                          const due = Math.max(0, (booking.plan?.price || 0) - paid)
+                          
+                          return (
+                            <div key={booking.id} className="bg-app-surface/40 border border-app-border p-4 rounded-xl space-y-3">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <span className="font-extrabold text-sm text-white block">Seat {booking.seat?.seatNumber || 'N/A'}</span>
+                                  <span className="text-[10px] text-slate-400 block">{booking.plan?.name || 'N/A'} ({booking.shift?.name || 'N/A'})</span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                                  booking.status === 'ACTIVE' 
+                                    ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' 
+                                    : 'bg-slate-800 text-slate-500 border border-slate-700'
+                                }`}>
+                                  {booking.status}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2 text-xs text-slate-400 border-t border-app-border/40 pt-3">
+                                <div>
+                                  <span className="block text-[9px] font-medium text-slate-500 uppercase">Validity</span>
+                                  <span className="font-bold text-slate-300 block">{new Date(booking.startDate).toLocaleDateString()} - {new Date(booking.endDate).toLocaleDateString()}</span>
+                                </div>
+                                <div>
+                                  <span className="block text-[9px] font-medium text-slate-500 uppercase">Paid Amount</span>
+                                  <span className="font-bold text-emerald-400 block">₹{paid}</span>
+                                </div>
+                                <div>
+                                  <span className="block text-[9px] font-medium text-slate-500 uppercase">Pending Due</span>
+                                  <span className={`font-bold block ${due > 0 ? 'text-red-400' : 'text-slate-400'}`}>₹{due}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'attendance' && (
+            <div className="space-y-6">
+              {/* Month Picker & Analytics */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-semibold whitespace-nowrap">Select Month:</span>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="bg-app-surface border border-app-border rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+
+                {attendanceData && (
+                  <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-extrabold uppercase bg-app-surface/20 p-2 rounded-xl border border-app-border/40 flex-1 sm:max-w-xs">
+                    <div className="border-r border-app-border/40">
+                      <span className="text-slate-500 block leading-none mb-1">Present</span>
+                      <span className="text-sm font-black text-emerald-400 block">{attendanceData.summary.presentCount}d</span>
+                    </div>
+                    <div className="border-r border-app-border/40">
+                      <span className="text-slate-500 block leading-none mb-1">Absent</span>
+                      <span className="text-sm font-black text-red-400 block">{attendanceData.summary.absentCount}d</span>
+                    </div>
+                    <div className="border-r border-app-border/40">
+                      <span className="text-slate-500 block leading-none mb-1">Holiday</span>
+                      <span className="text-sm font-black text-slate-400 block">{attendanceData.summary.unbookedCount}d</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block leading-none mb-1">Rate</span>
+                      <span className="text-sm font-black text-violet-400 block">{attendanceData.summary.attendanceRate}%</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {loadingAttendance ? (
+                <div className="py-12 flex justify-center">
+                  <RefreshCw className="w-6 h-6 text-violet-500 animate-spin" />
+                </div>
+              ) : !attendanceData ? (
+                <div className="text-slate-400 text-xs italic text-center py-6">Choose a month to load attendance stats.</div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Legend */}
+                  <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase text-slate-400 bg-slate-900/30 p-2.5 rounded-xl border border-app-border/30">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/20 border border-emerald-500/50 block"></span>
+                      <span>Present</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/50 block"></span>
+                      <span>Absent</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-800 border border-slate-700 block"></span>
+                      <span>No Booking</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500/10 border border-blue-500/30 border-dashed block"></span>
+                      <span>Future Shift</span>
+                    </span>
+                  </div>
+
+                  {/* Calendar Grid */}
+                  <div className="backdrop-blur-md bg-app-surface/20 border border-app-border/40 p-4 rounded-xl">
+                    <div className="grid grid-cols-7 gap-1 text-center font-bold text-slate-500 text-[10px] uppercase mb-2">
+                      <div>Sun</div>
+                      <div>Mon</div>
+                      <div>Tue</div>
+                      <div>Wed</div>
+                      <div>Thu</div>
+                      <div>Fri</div>
+                      <div>Sat</div>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {calendarDays.map((cell: any, idx: number) => {
+                        if (cell.pad) {
+                          return <div key={cell.key} className="h-10 sm:h-12 bg-transparent"></div>
+                        }
+
+                        let bgStyle = 'bg-slate-800/20 border-slate-800 text-slate-600'
+                        let titleText = `Day ${cell.day}: No Booking`
+
+                        if (cell.status === 'PRESENT') {
+                          bgStyle = 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                          const checkInTime = cell.checkIn ? new Date(cell.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : ''
+                          const checkOutTime = cell.checkOut ? new Date(cell.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'Inside'
+                          titleText = `Day ${cell.day}: Present (${checkInTime} - ${checkOutTime}) Duration: ${cell.duration || 'N/A'}`
+                        } else if (cell.status === 'ABSENT') {
+                          bgStyle = 'bg-red-500/15 border-red-500/40 text-red-300'
+                          titleText = `Day ${cell.day}: Absent (Missed ${cell.shiftName || 'shift'})`
+                        } else if (cell.status === 'FUTURE_BOOKING') {
+                          bgStyle = 'bg-blue-500/10 border-blue-500/30 border-dashed text-blue-300'
+                          titleText = `Day ${cell.day}: Scheduled booking (${cell.shiftName || 'shift'})`
+                        }
+
+                        return (
+                          <div
+                            key={cell.key}
+                            title={titleText}
+                            className={`h-10 sm:h-12 border rounded-xl flex flex-col justify-center items-center relative transition-all group hover:scale-[1.04] cursor-help ${bgStyle}`}
+                          >
+                            <span className="text-xs font-black">{cell.day}</span>
+                            
+                            {/* Hover info tooltip popup */}
+                            {cell.status !== 'NO_BOOKING' && (
+                              <div className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-950 border border-slate-800 p-2.5 rounded-xl shadow-2xl z-50 text-[10px] leading-relaxed text-slate-300 space-y-1">
+                                <div className="font-extrabold text-white border-b border-slate-800 pb-1 mb-1">Day {cell.day} Status</div>
+                                <div>Status: <span className={`font-bold ${cell.status === 'PRESENT' ? 'text-emerald-400' : cell.status === 'ABSENT' ? 'text-red-400' : 'text-blue-400'}`}>{cell.status}</span></div>
+                                {cell.status === 'PRESENT' && (
+                                  <>
+                                    <div>In: <span className="text-white font-bold">{new Date(cell.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span></div>
+                                    <div>Out: <span className="text-white font-bold">{cell.checkOut ? new Date(cell.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'Inside'}</span></div>
+                                    {cell.duration && <div>Duration: <span className="text-white font-bold">{cell.duration}</span></div>}
+                                  </>
+                                )}
+                                {(cell.status === 'ABSENT' || cell.status === 'FUTURE_BOOKING') && (
+                                  <>
+                                    <div>Shift: <span className="text-white font-bold">{cell.shiftName}</span></div>
+                                    <div>Plan: <span className="text-white font-bold">{cell.planName}</span></div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
     </div>
   )
 }

@@ -446,4 +446,150 @@ router.get('/student-kiosk-dictionary', async (req: Request, res: Response) => {
   }
 })
 
+/**
+ * GET /api/attendance/student/:studentId/monthly
+ * Fetch monthly attendance history & calculated present/absent days for a single student
+ */
+router.get('/student/:studentId/monthly', async (req: Request, res: Response) => {
+  const tenantId = req.tenantId!
+  const { studentId } = req.params
+  const { month } = req.query // Format: YYYY-MM
+
+  if (!studentId) {
+    return res.status(400).json({ error: 'Student ID is required' })
+  }
+
+  try {
+    // Validate student exists and belongs to tenant
+    const student = await Student.findOne({ _id: studentId, tenantId })
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' })
+    }
+
+    // Default to current month if not specified
+    const targetMonth = month ? String(month) : new Date().toISOString().slice(0, 7) // "YYYY-MM"
+    const [yearStr, monthStr] = targetMonth.split('-')
+    const year = parseInt(yearStr, 10)
+    const monthIndex = parseInt(monthStr, 10) - 1 // 0-indexed month
+
+    if (isNaN(year) || isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) {
+      return res.status(400).json({ error: 'Invalid month format. Expected YYYY-MM' })
+    }
+
+    const monthStart = new Date(year, monthIndex, 1)
+    const monthEnd = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999) // Last day of month
+
+    // Fetch all check-in/out records for this student in this month
+    const logs = await Attendance.find({
+      tenantId,
+      studentId,
+      date: { $regex: `^${targetMonth}` }
+    }).sort({ checkIn: 1 })
+
+    // Fetch all active/completed bookings for this student that overlap with this month
+    const bookings = await Booking.find({
+      tenantId,
+      studentId,
+      startDate: { $lte: monthEnd },
+      endDate: { $gte: monthStart },
+      status: { $in: ['ACTIVE', 'COMPLETED'] }
+    }).populate('shift').populate('plan')
+
+    const totalDays = monthEnd.getDate()
+    const daysData = []
+    let presentCount = 0
+    let absentCount = 0
+    let unbookedCount = 0
+    let futureCount = 0
+
+    const todayStr = new Date().toISOString().split('T')[0]
+
+    for (let day = 1; day <= totalDays; day++) {
+      const currentDayDate = new Date(year, monthIndex, day)
+      const dayStr = String(day).padStart(2, '0')
+      const dateStr = `${targetMonth}-${dayStr}`
+
+      // Check if there is attendance on this day
+      const dayLog = logs.find(l => l.date === dateStr)
+
+      // Find booking covering this day
+      const coveringBooking = bookings.find(b => {
+        const start = new Date(b.startDate)
+        const end = new Date(b.endDate)
+        start.setHours(0, 0, 0, 0)
+        end.setHours(23, 59, 59, 999)
+        return currentDayDate >= start && currentDayDate <= end
+      }) as any
+
+      let status = 'NO_BOOKING'
+      let checkIn = null
+      let checkOut = null
+      let duration = null
+      let shiftName = coveringBooking?.shift?.name || 'N/A'
+      let planName = coveringBooking?.plan?.name || 'N/A'
+
+      if (dayLog) {
+        status = 'PRESENT'
+        presentCount++
+        checkIn = dayLog.checkIn
+        checkOut = dayLog.checkOut || null
+        if (dayLog.checkOut) {
+          const diffMs = new Date(dayLog.checkOut).getTime() - new Date(dayLog.checkIn).getTime()
+          const hours = Math.floor(diffMs / (1000 * 60 * 60))
+          const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+          duration = `${hours}h ${minutes}m`
+        }
+      } else if (coveringBooking) {
+        if (dateStr > todayStr) {
+          status = 'FUTURE_BOOKING'
+          futureCount++
+        } else {
+          status = 'ABSENT'
+          absentCount++
+        }
+      } else {
+        status = 'NO_BOOKING'
+        unbookedCount++
+      }
+
+      daysData.push({
+        date: dateStr,
+        day,
+        status,
+        checkIn,
+        checkOut,
+        duration,
+        shiftName,
+        planName
+      })
+    }
+
+    const totalExpectedDays = presentCount + absentCount
+    const attendanceRate = totalExpectedDays > 0 ? Math.round((presentCount / totalExpectedDays) * 100) : 0
+
+    return res.json({
+      student: {
+        id: student._id,
+        name: student.name,
+        registrationNo: student.registrationNo,
+        phone: student.phone
+      },
+      month: targetMonth,
+      summary: {
+        totalDays,
+        presentCount,
+        absentCount,
+        unbookedCount,
+        futureCount,
+        attendanceRate
+      },
+      days: daysData
+    })
+
+  } catch (error) {
+    console.error('Fetch student monthly attendance error:', error)
+    return res.status(500).json({ error: 'Internal server error calculating monthly attendance' })
+  }
+})
+
 export default router
