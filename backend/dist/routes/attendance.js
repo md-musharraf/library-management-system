@@ -3,6 +3,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const uuid_1 = require("uuid");
 const models_1 = require("../models");
+// Local timezone-aware date string helper (YYYY-MM-DD)
+function getLocalDateString(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
 const router = (0, express_1.Router)();
 /**
  * POST /api/attendance/check-in
@@ -24,7 +31,7 @@ router.post('/check-in', async (req, res) => {
             return res.status(400).json({ error: 'This student workspace is marked inactive' });
         }
         // 2. Check if student already has an open check-in today
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateString();
         const openCheckIn = await models_1.Attendance.findOne({
             tenantId,
             studentId: student._id,
@@ -111,7 +118,7 @@ router.post('/check-out', async (req, res) => {
  */
 router.get('/today', async (req, res) => {
     const tenantId = req.tenantId;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     try {
         const logs = await models_1.Attendance.find({ tenantId, date: todayStr })
             .populate('student')
@@ -242,7 +249,7 @@ router.get('/analytics', async (req, res) => {
         for (let i = 13; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
-            const dateStr = d.toISOString().split('T')[0];
+            const dateStr = getLocalDateString(d);
             const label = `${d.getDate()} ${months[d.getMonth()]}`;
             dailyTrends.push({ date: dateStr, label, count: 0 });
         }
@@ -410,11 +417,12 @@ router.get('/student/:studentId/monthly', async (req, res) => {
         }
         const monthStart = new Date(year, monthIndex, 1);
         const monthEnd = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999); // Last day of month
+        const escapedMonth = targetMonth.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         // Fetch all check-in/out records for this student in this month
         const logs = await models_1.Attendance.find({
             tenantId,
             studentId,
-            date: { $regex: `^${targetMonth}` }
+            date: { $regex: `^${escapedMonth}` }
         }).sort({ checkIn: 1 });
         // Fetch all active/completed bookings for this student that overlap with this month
         const bookings = await models_1.Booking.find({
@@ -430,7 +438,7 @@ router.get('/student/:studentId/monthly', async (req, res) => {
         let absentCount = 0;
         let unbookedCount = 0;
         let futureCount = 0;
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateString();
         for (let day = 1; day <= totalDays; day++) {
             const currentDayDate = new Date(year, monthIndex, day);
             const dayStr = String(day).padStart(2, '0');

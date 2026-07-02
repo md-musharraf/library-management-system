@@ -17,10 +17,11 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (search) {
       const s = String(search)
+      const escapedSearch = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       query.$or = [
-        { name: { $regex: s, $options: 'i' } },
-        { phone: { $regex: s, $options: 'i' } },
-        { registrationNo: { $regex: s, $options: 'i' } },
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { phone: { $regex: escapedSearch, $options: 'i' } },
+        { registrationNo: { $regex: escapedSearch, $options: 'i' } },
       ]
     }
 
@@ -40,9 +41,9 @@ router.get('/', async (req: Request, res: Response) => {
       }
     })
 
-    // Bulk fetch payments for all active bookings
+    // Bulk fetch payments for all active bookings scoped by tenantId
     const activeBookingIds = activeBookings.map(b => b._id.toString())
-    const payments = await Payment.find({ bookingId: { $in: activeBookingIds } })
+    const payments = await Payment.find({ tenantId, bookingId: { $in: activeBookingIds } })
 
     // Group payments by bookingId
     const paymentsByBookingMap: Record<string, any[]> = {}

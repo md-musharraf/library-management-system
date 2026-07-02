@@ -308,28 +308,13 @@ router.post('/change-booking', async (req: Request, res: Response) => {
   }
 
   try {
-    // 1. Find and release all current active bookings for this student
-    const activeBookings = await Booking.find({ tenantId, studentId, status: 'ACTIVE' })
-    const oldSeatIds = new Set<string>()
-    for (const ab of activeBookings) {
-      await Booking.findByIdAndUpdate(ab._id, { status: 'COMPLETED' })
-      if (ab.seatId) {
-        oldSeatIds.add(ab.seatId.toString())
-      }
-    }
-
-    // Update old seats status dynamically
-    for (const oldSeatId of oldSeatIds) {
-      await updateSeatStatus(tenantId, oldSeatId)
-    }
-
-    // 2. Book the new seat
+    // 1. Verify new seat
     const seat = await Seat.findOne({ _id: seatId, tenantId })
     if (!seat) {
       return res.status(404).json({ error: 'Seat not found' })
     }
 
-    // Get target shifts
+    // 2. Get target shifts
     let targetShifts: any[] = []
     if (bookAllShifts) {
       targetShifts = await Shift.find({ tenantId })
@@ -347,24 +332,45 @@ router.post('/change-booking', async (req: Request, res: Response) => {
       targetShifts = [shift]
     }
 
-    // Check seat not already booked in target shifts
+    // 3. Verify student
+    const student = await Student.findOne({ _id: studentId, tenantId })
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' })
+    }
+
+    // 4. Verify plan
+    const plan = await Plan.findOne({ _id: planId, tenantId }) as any
+    if (!plan) {
+      return res.status(404).json({ error: 'Plan not found' })
+    }
+
+    // 5. Check seat not already booked in target shifts by other students
     for (const sh of targetShifts) {
       const activeShiftBooking = await Booking.findOne({
-        tenantId, seatId, shiftId: sh._id, status: 'ACTIVE',
+        tenantId,
+        seatId,
+        shiftId: sh._id,
+        status: 'ACTIVE',
+        studentId: { $ne: studentId } // Exclude current student's own active booking to allow plan/shift modifications
       })
       if (activeShiftBooking) {
         return res.status(400).json({ error: `Seat is already booked for shift timing: ${sh.name}.` })
       }
     }
 
-    const student = await Student.findOne({ _id: studentId, tenantId })
-    if (!student) {
-      return res.status(404).json({ error: 'Student not found' })
+    // 6. Find and release all current active bookings for this student (only after all validations passed)
+    const activeBookings = await Booking.find({ tenantId, studentId, status: 'ACTIVE' })
+    const oldSeatIds = new Set<string>()
+    for (const ab of activeBookings) {
+      await Booking.findByIdAndUpdate(ab._id, { status: 'COMPLETED' })
+      if (ab.seatId) {
+        oldSeatIds.add(ab.seatId.toString())
+      }
     }
 
-    const plan = await Plan.findOne({ _id: planId, tenantId }) as any
-    if (!plan) {
-      return res.status(404).json({ error: 'Plan not found' })
+    // Update old seats status dynamically
+    for (const oldSeatId of oldSeatIds) {
+      await updateSeatStatus(tenantId, oldSeatId)
     }
 
     const start = new Date()

@@ -83,6 +83,7 @@ app.use(express.json())
 // Apply Rate Limiting Middleware
 app.use('/api/auth/login', rateLimiter(60000, 10, 'Too many login attempts from this IP. Please try again after a minute.'))
 app.use('/api/auth/register-tenant', rateLimiter(60000, 5, 'Too many registration requests from this IP. Please try again after a minute.'))
+app.use('/api/admin/login', rateLimiter(60000, 10, 'Too many admin login attempts from this IP. Please try again after a minute.'))
 app.use(rateLimiter(60000, 150))
 
 // Request Logging Middleware

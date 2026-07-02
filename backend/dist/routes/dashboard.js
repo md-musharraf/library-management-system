@@ -54,9 +54,9 @@ router.get('/expiring-bookings', async (req, res) => {
             .populate('seat')
             .populate('plan')
             .populate('shift');
-        // Bulk fetch all payments for these expiring bookings to avoid N+1 query
+        // Bulk fetch all payments for these expiring bookings scoped by tenantId to avoid N+1 query
         const expiringBookingIds = expiringBookings.map(b => b._id.toString());
-        const payments = await models_1.Payment.find({ bookingId: { $in: expiringBookingIds } });
+        const payments = await models_1.Payment.find({ tenantId, bookingId: { $in: expiringBookingIds } });
         // Group payments by bookingId
         const paymentsByBookingMap = {};
         payments.forEach((p) => {

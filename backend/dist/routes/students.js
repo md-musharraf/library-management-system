@@ -15,10 +15,11 @@ router.get('/', async (req, res) => {
         let query = { tenantId };
         if (search) {
             const s = String(search);
+            const escapedSearch = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             query.$or = [
-                { name: { $regex: s, $options: 'i' } },
-                { phone: { $regex: s, $options: 'i' } },
-                { registrationNo: { $regex: s, $options: 'i' } },
+                { name: { $regex: escapedSearch, $options: 'i' } },
+                { phone: { $regex: escapedSearch, $options: 'i' } },
+                { registrationNo: { $regex: escapedSearch, $options: 'i' } },
             ];
         }
         const students = await models_1.Student.find(query).sort({ createdAt: -1 });
@@ -34,9 +35,9 @@ router.get('/', async (req, res) => {
                 bookingByStudentMap[b.studentId.toString()] = b;
             }
         });
-        // Bulk fetch payments for all active bookings
+        // Bulk fetch payments for all active bookings scoped by tenantId
         const activeBookingIds = activeBookings.map(b => b._id.toString());
-        const payments = await models_1.Payment.find({ bookingId: { $in: activeBookingIds } });
+        const payments = await models_1.Payment.find({ tenantId, bookingId: { $in: activeBookingIds } });
         // Group payments by bookingId
         const paymentsByBookingMap = {};
         payments.forEach((p) => {

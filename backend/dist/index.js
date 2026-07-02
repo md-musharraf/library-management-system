@@ -86,6 +86,7 @@ app.use(express_1.default.json());
 // Apply Rate Limiting Middleware
 app.use('/api/auth/login', (0, rateLimiter_1.rateLimiter)(60000, 10, 'Too many login attempts from this IP. Please try again after a minute.'));
 app.use('/api/auth/register-tenant', (0, rateLimiter_1.rateLimiter)(60000, 5, 'Too many registration requests from this IP. Please try again after a minute.'));
+app.use('/api/admin/login', (0, rateLimiter_1.rateLimiter)(60000, 10, 'Too many admin login attempts from this IP. Please try again after a minute.'));
 app.use((0, rateLimiter_1.rateLimiter)(60000, 150));
 // Request Logging Middleware
 app.use((req, res, next) => {
