@@ -3,6 +3,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.rateLimiter = rateLimiter;
 function rateLimiter(windowMs, maxRequests, message) {
     const rateLimitMap = new Map();
+    // Periodically clean up expired entries from the map to prevent memory leaks
+    const interval = setInterval(() => {
+        const now = Date.now();
+        for (const [ip, info] of rateLimitMap.entries()) {
+            if (now - info.startTime > windowMs) {
+                rateLimitMap.delete(ip);
+            }
+        }
+    }, Math.max(windowMs, 60000));
+    // Allow Node to exit even if this interval timer is active
+    if (interval && typeof interval.unref === 'function') {
+        interval.unref();
+    }
     return (req, res, next) => {
         // Get client IP address
         const ip = (req.headers['x-forwarded-for'] ||

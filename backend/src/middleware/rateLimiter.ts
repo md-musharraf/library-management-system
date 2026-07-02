@@ -2,6 +2,22 @@ import { Request, Response, NextFunction } from 'express'
 
 export function rateLimiter(windowMs: number, maxRequests: number, message?: string) {
   const rateLimitMap = new Map<string, { count: number; startTime: number }>()
+
+  // Periodically clean up expired entries from the map to prevent memory leaks
+  const interval = setInterval(() => {
+    const now = Date.now()
+    for (const [ip, info] of rateLimitMap.entries()) {
+      if (now - info.startTime > windowMs) {
+        rateLimitMap.delete(ip)
+      }
+    }
+  }, Math.max(windowMs, 60000))
+
+  // Allow Node to exit even if this interval timer is active
+  if (interval && typeof interval.unref === 'function') {
+    interval.unref()
+  }
+
   return (req: Request, res: Response, next: NextFunction) => {
     // Get client IP address
     const ip = (

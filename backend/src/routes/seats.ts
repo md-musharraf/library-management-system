@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import { Seat, Booking, Student, Plan, Shift, WhatsappConfig, Tenant, Payment, MessageLog } from '../models'
 import { formatTimeTo12h } from '../utils/time'
+import { sendNotification } from '../utils/notification'
 
 const router = Router()
 
@@ -273,27 +274,21 @@ router.post('/book', async (req: Request, res: Response) => {
     // 8. Update seat status dynamically (OCCUPIED only if fully booked for all shifts)
     await updateSeatStatus(tenantId, seatId)
 
-    // Try sending booking WhatsApp
+    // Try sending booking notification
     try {
-      const config = await WhatsappConfig.findOne({ tenantId })
       const tenant = await Tenant.findById(tenantId)
-      if (config && config.apiUrl && config.token) {
-        const shiftInfoStr = bookAllShifts
-          ? 'All Shifts (Full Seat)'
-          : `the ${targetShifts[0].name} shift (${formatTimeTo12h(targetShifts[0].startTime)}-${formatTimeTo12h(targetShifts[0].endTime)})`
+      const shiftInfoStr = bookAllShifts
+        ? 'All Shifts (Full Seat)'
+        : `the ${targetShifts[0].name} shift (${formatTimeTo12h(targetShifts[0].startTime)}-${formatTimeTo12h(targetShifts[0].endTime)})`
 
-        const msg = `Hello ${(student as any).name}, your seat ${(seat as any).seatNumber} has been successfully booked at ${(tenant as any)?.name} for ${shiftInfoStr}. Your membership is valid until ${end.toLocaleDateString()}. Thank you!`
-        console.log(`[WHATSAPP AUTOMATION] Sending booking success message: ${msg}`)
-        await MessageLog.create({
-          _id: uuidv4(),
-          tenantId,
-          recipient: (student as any).phone as string,
-          message: msg,
-          status: 'SENT',
-        })
-      }
+      const msg = `Hello ${(student as any).name}, your seat ${(seat as any).seatNumber} has been successfully booked at ${(tenant as any)?.name} for ${shiftInfoStr}. Your membership is valid until ${end.toLocaleDateString()}. Thank you!`
+      
+      // Dispatch notification in background
+      sendNotification(tenantId, (student as any).phone, msg).catch((err) => {
+        console.error('[AUTO BOOKING NOTIFICATION ERROR]', err)
+      })
     } catch (wsErr) {
-      console.error('Failed to trigger booking WhatsApp message:', wsErr)
+      console.error('Failed to trigger booking message:', wsErr)
     }
 
     return res.status(201).json({ bookings, payments })
@@ -419,27 +414,21 @@ router.post('/change-booking', async (req: Request, res: Response) => {
     // Update new seat status dynamically
     await updateSeatStatus(tenantId, seatId)
 
-    // Try sending booking WhatsApp notification
+    // Try sending booking notification
     try {
-      const config = await WhatsappConfig.findOne({ tenantId })
       const tenant = await Tenant.findById(tenantId)
-      if (config && config.apiUrl && config.token) {
-        const shiftInfoStr = bookAllShifts
-          ? 'All Shifts (Full Seat)'
-          : `the ${targetShifts[0].name} shift (${formatTimeTo12h(targetShifts[0].startTime)}-${formatTimeTo12h(targetShifts[0].endTime)})`
+      const shiftInfoStr = bookAllShifts
+        ? 'All Shifts (Full Seat)'
+        : `the ${targetShifts[0].name} shift (${formatTimeTo12h(targetShifts[0].startTime)}-${formatTimeTo12h(targetShifts[0].endTime)})`
 
-        const msg = `Hello ${(student as any).name}, your seat ${(seat as any).seatNumber} timings have been updated at ${(tenant as any)?.name} for ${shiftInfoStr}. Valid until ${end.toLocaleDateString()}. Thank you!`
-        console.log(`[WHATSAPP AUTOMATION] Sending timing change message: ${msg}`)
-        await MessageLog.create({
-          _id: uuidv4(),
-          tenantId,
-          recipient: (student as any).phone as string,
-          message: msg,
-          status: 'SENT',
-        })
-      }
+      const msg = `Hello ${(student as any).name}, your seat ${(seat as any).seatNumber} timings have been updated at ${(tenant as any)?.name} for ${shiftInfoStr}. Valid until ${end.toLocaleDateString()}. Thank you!`
+      
+      // Dispatch notification in background
+      sendNotification(tenantId, (student as any).phone, msg).catch((err) => {
+        console.error('[AUTO TIMING UPDATE NOTIFICATION ERROR]', err)
+      })
     } catch (wsErr) {
-      console.error('Failed to trigger change timing WhatsApp message:', wsErr)
+      console.error('Failed to trigger change timing message:', wsErr)
     }
 
     return res.status(200).json({ message: 'Seat booking timings updated successfully', bookings, payments })

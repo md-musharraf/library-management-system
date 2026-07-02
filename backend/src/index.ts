@@ -22,6 +22,35 @@ import { authMiddleware } from './middleware/auth'
 
 import { rateLimiter } from './middleware/rateLimiter'
 
+// Strict environment validation for production ready LMS
+const JWT_SECRET_VAL = process.env.JWT_SECRET
+const ADMIN_PASSWORD_VAL = process.env.ADMIN_PASSWORD
+const LICENSE_MASTER_SECRET_VAL = process.env.LICENSE_MASTER_SECRET
+
+const isInsecureJwt = !JWT_SECRET_VAL || JWT_SECRET_VAL === 'lms-super-secret-jwt-key'
+const isInsecureAdminPass = !ADMIN_PASSWORD_VAL || ADMIN_PASSWORD_VAL === 'change-this-password' || ADMIN_PASSWORD_VAL === 'admin123'
+const isInsecureLicenseSecret = !LICENSE_MASTER_SECRET_VAL || LICENSE_MASTER_SECRET_VAL === 'change-this-license-secret' || LICENSE_MASTER_SECRET_VAL === 'lms-default-master-secret-key-987654321'
+
+if (process.env.NODE_ENV === 'production') {
+  if (isInsecureJwt || isInsecureAdminPass || isInsecureLicenseSecret) {
+    console.error('❌ CRITICAL SECURITY ERROR: Missing or insecure environment variables in production!')
+    if (isInsecureJwt) console.error('   - JWT_SECRET is not configured or using development fallback.')
+    if (isInsecureAdminPass) console.error('   - ADMIN_PASSWORD is not configured or using default password.')
+    if (isInsecureLicenseSecret) console.error('   - LICENSE_MASTER_SECRET is not configured or using fallback key.')
+    console.error('   Please define secure values in your .env file before starting the application in production mode.')
+    process.exit(1)
+  }
+} else {
+  // Prominent security warnings in development
+  if (isInsecureJwt || isInsecureAdminPass || isInsecureLicenseSecret) {
+    console.warn('\n⚠️  SECURITY WARNING: Development default credentials/secrets are active!')
+    if (isInsecureJwt) console.warn('   - JWT_SECRET is using a weak development default key.')
+    if (isInsecureAdminPass) console.warn('   - ADMIN_PASSWORD is using default "admin123" password.')
+    if (isInsecureLicenseSecret) console.warn('   - LICENSE_MASTER_SECRET is using a weak fallback key.')
+    console.warn('   Make sure to define secure values in backend/.env for production deployment.\n')
+  }
+}
+
 const app = express()
 const PORT = process.env.PORT || 5000
 

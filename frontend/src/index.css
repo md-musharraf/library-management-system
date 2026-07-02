@@ -164,7 +164,7 @@ input::placeholder, textarea::placeholder {
 :root:not(.dark) .bg-violet-500 .text-white,
 :root:not(.dark) .bg-emerald-600 .text-white,
 :root:not(.dark) .bg-emerald-500 .text-white,
-:root:not(.dark) .bg-[#10b981] .text-white,
+:root:not(.dark) .bg-\[\#10b981\] .text-white,
 :root:not(.dark) .bg-rose-600 .text-white,
 :root:not(.dark) .bg-rose-500 .text-white,
 :root:not(.dark) .bg-red-600 .text-white {

@@ -4,6 +4,7 @@ const express_1 = require("express");
 const uuid_1 = require("uuid");
 const models_1 = require("../models");
 const time_1 = require("../utils/time");
+const notification_1 = require("../utils/notification");
 const router = (0, express_1.Router)();
 // Helper to update seat status dynamically (occupied only if booked for all shifts)
 const updateSeatStatus = async (tenantId, seatId) => {
@@ -244,27 +245,20 @@ router.post('/book', async (req, res) => {
         }
         // 8. Update seat status dynamically (OCCUPIED only if fully booked for all shifts)
         await updateSeatStatus(tenantId, seatId);
-        // Try sending booking WhatsApp
+        // Try sending booking notification
         try {
-            const config = await models_1.WhatsappConfig.findOne({ tenantId });
             const tenant = await models_1.Tenant.findById(tenantId);
-            if (config && config.apiUrl && config.token) {
-                const shiftInfoStr = bookAllShifts
-                    ? 'All Shifts (Full Seat)'
-                    : `the ${targetShifts[0].name} shift (${(0, time_1.formatTimeTo12h)(targetShifts[0].startTime)}-${(0, time_1.formatTimeTo12h)(targetShifts[0].endTime)})`;
-                const msg = `Hello ${student.name}, your seat ${seat.seatNumber} has been successfully booked at ${tenant?.name} for ${shiftInfoStr}. Your membership is valid until ${end.toLocaleDateString()}. Thank you!`;
-                console.log(`[WHATSAPP AUTOMATION] Sending booking success message: ${msg}`);
-                await models_1.MessageLog.create({
-                    _id: (0, uuid_1.v4)(),
-                    tenantId,
-                    recipient: student.phone,
-                    message: msg,
-                    status: 'SENT',
-                });
-            }
+            const shiftInfoStr = bookAllShifts
+                ? 'All Shifts (Full Seat)'
+                : `the ${targetShifts[0].name} shift (${(0, time_1.formatTimeTo12h)(targetShifts[0].startTime)}-${(0, time_1.formatTimeTo12h)(targetShifts[0].endTime)})`;
+            const msg = `Hello ${student.name}, your seat ${seat.seatNumber} has been successfully booked at ${tenant?.name} for ${shiftInfoStr}. Your membership is valid until ${end.toLocaleDateString()}. Thank you!`;
+            // Dispatch notification in background
+            (0, notification_1.sendNotification)(tenantId, student.phone, msg).catch((err) => {
+                console.error('[AUTO BOOKING NOTIFICATION ERROR]', err);
+            });
         }
         catch (wsErr) {
-            console.error('Failed to trigger booking WhatsApp message:', wsErr);
+            console.error('Failed to trigger booking message:', wsErr);
         }
         return res.status(201).json({ bookings, payments });
     }
@@ -377,27 +371,20 @@ router.post('/change-booking', async (req, res) => {
         }
         // Update new seat status dynamically
         await updateSeatStatus(tenantId, seatId);
-        // Try sending booking WhatsApp notification
+        // Try sending booking notification
         try {
-            const config = await models_1.WhatsappConfig.findOne({ tenantId });
             const tenant = await models_1.Tenant.findById(tenantId);
-            if (config && config.apiUrl && config.token) {
-                const shiftInfoStr = bookAllShifts
-                    ? 'All Shifts (Full Seat)'
-                    : `the ${targetShifts[0].name} shift (${(0, time_1.formatTimeTo12h)(targetShifts[0].startTime)}-${(0, time_1.formatTimeTo12h)(targetShifts[0].endTime)})`;
-                const msg = `Hello ${student.name}, your seat ${seat.seatNumber} timings have been updated at ${tenant?.name} for ${shiftInfoStr}. Valid until ${end.toLocaleDateString()}. Thank you!`;
-                console.log(`[WHATSAPP AUTOMATION] Sending timing change message: ${msg}`);
-                await models_1.MessageLog.create({
-                    _id: (0, uuid_1.v4)(),
-                    tenantId,
-                    recipient: student.phone,
-                    message: msg,
-                    status: 'SENT',
-                });
-            }
+            const shiftInfoStr = bookAllShifts
+                ? 'All Shifts (Full Seat)'
+                : `the ${targetShifts[0].name} shift (${(0, time_1.formatTimeTo12h)(targetShifts[0].startTime)}-${(0, time_1.formatTimeTo12h)(targetShifts[0].endTime)})`;
+            const msg = `Hello ${student.name}, your seat ${seat.seatNumber} timings have been updated at ${tenant?.name} for ${shiftInfoStr}. Valid until ${end.toLocaleDateString()}. Thank you!`;
+            // Dispatch notification in background
+            (0, notification_1.sendNotification)(tenantId, student.phone, msg).catch((err) => {
+                console.error('[AUTO TIMING UPDATE NOTIFICATION ERROR]', err);
+            });
         }
         catch (wsErr) {
-            console.error('Failed to trigger change timing WhatsApp message:', wsErr);
+            console.error('Failed to trigger change timing message:', wsErr);
         }
         return res.status(200).json({ message: 'Seat booking timings updated successfully', bookings, payments });
     }
